@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">本地音乐</string>
+
+    <string name="tab_songs">歌曲</string>
+    <string name="tab_albums">专辑</string>
+    <string name="tab_artists">歌手</string>
+
+    <string name="search_hint">搜索歌曲、专辑或歌手</string>
+    <string name="exit_hint">再按一次退出</string>
+
+    <string name="action_sort">排序</string>
+    <string name="action_more">更多</string>
+
+    <string name="player_title">正在播放</string>
+</resources>
