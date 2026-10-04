@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.musemusic45.data.model.ArtistParsingConfig
 import com.musemusic45.data.model.PlayMode
 import com.musemusic45.data.model.SortField
 import com.musemusic45.data.model.SortOrder
@@ -113,6 +114,54 @@ class SettingsStore(private val context: Context) {
         context.settingsDataStore.edit { it[KEY_ONLY_FOLDERS] = enabled }
     }
 
+    // ---------------------------------------------------------- 歌手归类
+
+    /** 是否把「周杰伦、费玉清」拆成两位歌手。 */
+    val splitArtists: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
+        prefs[KEY_SPLIT_ARTISTS] ?: true
+    }
+
+    suspend fun setSplitArtists(enabled: Boolean) {
+        context.settingsDataStore.edit { it[KEY_SPLIT_ARTISTS] = enabled }
+    }
+
+    /** 是否忽略歌手名里的括号内容（「某某（xxx）」→「某某」）。 */
+    val ignoreArtistParens: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
+        prefs[KEY_IGNORE_PARENS] ?: true
+    }
+
+    suspend fun setIgnoreArtistParens(enabled: Boolean) {
+        context.settingsDataStore.edit { it[KEY_IGNORE_PARENS] = enabled }
+    }
+
+    /**
+     * **额外添加**的歌手分隔符（默认的 、；/ 始终生效，这里是追加）。
+     * 每个字符都算一个。
+     */
+    val extraArtistSeparators: Flow<String> = context.settingsDataStore.data.map { prefs ->
+        prefs[KEY_EXTRA_SEPARATORS] ?: ""
+    }
+
+    /** 追加分隔符。默认已覆盖的字符会被忽略，不会重复堆在列表里。 */
+    suspend fun addArtistSeparators(text: String) {
+        context.settingsDataStore.edit { prefs ->
+            val current = prefs[KEY_EXTRA_SEPARATORS] ?: ""
+            prefs[KEY_EXTRA_SEPARATORS] = (current + text)
+                .filterNot { it in ArtistParsingConfig.DEFAULT_SEPARATORS }
+                .toList()
+                .distinct()
+                .joinToString("")
+        }
+    }
+
+    /** 移除一个额外分隔符。 */
+    suspend fun removeArtistSeparator(separator: Char) {
+        context.settingsDataStore.edit { prefs ->
+            val current = prefs[KEY_EXTRA_SEPARATORS] ?: ""
+            prefs[KEY_EXTRA_SEPARATORS] = current.filterNot { it == separator }
+        }
+    }
+
     // -------------------------------------------------------------- 键
 
     private companion object {
@@ -121,6 +170,10 @@ class SettingsStore(private val context: Context) {
         val KEY_LAST_POSITION = longPreferencesKey("last_position_ms")
         val KEY_FOLDERS = stringSetPreferencesKey("added_folders")
         val KEY_ONLY_FOLDERS = booleanPreferencesKey("only_added_folders")
+
+        val KEY_SPLIT_ARTISTS = booleanPreferencesKey("split_artists")
+        val KEY_IGNORE_PARENS = booleanPreferencesKey("ignore_artist_parens")
+        val KEY_EXTRA_SEPARATORS = stringPreferencesKey("artist_extra_separators")
 
         fun sortFieldKey(target: SortTarget) = stringPreferencesKey("sort_field_${target.name}")
 

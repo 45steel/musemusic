@@ -1,10 +1,16 @@
 package com.musemusic45.data.search
 
+import com.musemusic45.data.model.NameSortKey
+
 /**
  * 从拼音串里提取首字母。
  *
  * ICU 的 Han-Latin 转写结果是带声调的、空格分隔的拼音，例如
  * `周杰伦` → `zhōu jié lún`，提取首字母得到 `zjl`。
+ *
+ * **必须先去掉声调**：`ā`、`ě` 本身也是字母，直接取"第一个字母"会得到
+ * `āěf` 这种带调的结果。以元音开头的音节（阿 ā、爱 ài、安 ān、欧 ōu …）
+ * 都会因此搜不到，例如「阿尔法」的 `ā ěr fǎ` 应当得到 `aef`。
  *
  * 纯函数，便于单元测试。
  */
@@ -12,7 +18,11 @@ fun initialsFromPinyin(pinyin: String): String {
     if (pinyin.isBlank()) return ""
     return pinyin
         .split(' ', '\t', '\n', '-', '\'', '·', '/', '，', ',')
-        .mapNotNull { token -> token.firstOrNull { it.isLetter() } }
+        .mapNotNull { token ->
+            token.firstOrNull { it.isLetter() }
+                ?.let { NameSortKey.stripDiacritics(it.toString()) }
+                ?.firstOrNull { it.isLetter() }
+        }
         .joinToString("")
         .lowercase()
 }

@@ -2,6 +2,8 @@ package com.musemusic45.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Refresh
@@ -20,19 +23,27 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.musemusic45.data.model.ArtistParsingConfig
 
 /**
  * 设置页：重新扫描、文件夹管理、统计信息、关于。
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
     songCount: Int,
@@ -43,12 +54,28 @@ fun SettingsScreen(
     isScanning: Boolean,
     lastScanMillis: Long,
     versionName: String,
+    splitArtists: Boolean,
+    ignoreArtistParens: Boolean,
+    extraArtistSeparators: String,
     onRescan: () -> Unit,
     onAddFolder: () -> Unit,
     onRemoveFolder: (String) -> Unit,
     onToggleOnlyFolders: (Boolean) -> Unit,
+    onToggleSplitArtists: (Boolean) -> Unit,
+    onToggleIgnoreArtistParens: (Boolean) -> Unit,
+    onAddArtistSeparators: (String) -> Unit,
+    onRemoveArtistSeparator: (Char) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // 输入框只用于"添加"，添加完就清空，所以不需要跟 DataStore 同步
+    var separatorDraft by remember { mutableStateOf("") }
+
+    // 实时预览：让这几条规则一眼看懂
+    val previewNames = remember(extraArtistSeparators, splitArtists, ignoreArtistParens) {
+        ArtistParsingConfig(splitArtists, ignoreArtistParens, extraArtistSeparators)
+            .names(SEPARATOR_PREVIEW_INPUT)
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -157,6 +184,102 @@ fun SettingsScreen(
         Spacer(Modifier.height(16.dp))
         HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
 
+        SectionTitle("歌手归类")
+        Column(Modifier.padding(horizontal = 16.dp)) {
+            Text(
+                text = "这些规则决定「歌手」页怎么把歌归到歌手名下。改动后立即生效。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(6.dp))
+
+            SwitchRow(
+                title = "拆分多位歌手",
+                subtitle = "「周杰伦、费玉清」分别归到两位歌手名下；关掉后整串算一位",
+                checked = splitArtists,
+                onCheckedChange = onToggleSplitArtists,
+            )
+            SwitchRow(
+                title = "忽略歌手名里的括号",
+                subtitle = "「某某（xxx）」当作「某某」",
+                checked = ignoreArtistParens,
+                onCheckedChange = onToggleIgnoreArtistParens,
+            )
+
+            Spacer(Modifier.height(12.dp))
+            Text("额外分隔符", style = MaterialTheme.typography.bodyMedium)
+            Text(
+                text = "默认已支持 ${ArtistParsingConfig.DEFAULT_SEPARATORS}（顿号、分号、斜杠）。" +
+                    "可以在这里再添加，不会覆盖默认的。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(6.dp))
+
+            if (extraArtistSeparators.isEmpty()) {
+                Text(
+                    text = "还没添加任何额外分隔符",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    extraArtistSeparators.forEach { separator ->
+                        InputChip(
+                            selected = false,
+                            onClick = { onRemoveArtistSeparator(separator) },
+                            enabled = splitArtists,
+                            label = { Text(separator.toString()) },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = "移除分隔符 $separator",
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = separatorDraft,
+                    onValueChange = { separatorDraft = it },
+                    enabled = splitArtists,
+                    singleLine = true,
+                    label = { Text("添加分隔符") },
+                    placeholder = { Text("例如 &") },
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(8.dp))
+                Button(
+                    onClick = {
+                        onAddArtistSeparators(separatorDraft)
+                        separatorDraft = ""
+                    },
+                    enabled = splitArtists && separatorDraft.isNotEmpty(),
+                ) {
+                    Text("添加")
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "例：「$SEPARATOR_PREVIEW_INPUT」\n→ " + previewNames.joinToString(" / "),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+
+        Spacer(Modifier.height(16.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+
         SectionTitle("关于")
         Column(Modifier.padding(horizontal = 16.dp)) {
             Text("缪斯音乐 $versionName", style = MaterialTheme.typography.bodyMedium)
@@ -183,3 +306,32 @@ private fun SectionTitle(text: String) {
             .padding(horizontal = 16.dp, vertical = 10.dp),
     )
 }
+
+/** 一行「标题 + 说明 + 开关」。 */
+@Composable
+private fun SwitchRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+/** 分隔符预览用的样例：故意用一个默认分隔符之外的字符，方便看出"添加"的效果。 */
+private const val SEPARATOR_PREVIEW_INPUT = "周杰伦&费玉清（合唱）"

@@ -133,6 +133,7 @@ fun AppRoot(
     val lyrics by playerViewModel.lyrics.collectAsStateWithLifecycle()
     val folders by libraryViewModel.folders.collectAsStateWithLifecycle()
     val onlyFolders by libraryViewModel.onlyFolders.collectAsStateWithLifecycle()
+    val artistConfig by libraryViewModel.artistConfig.collectAsStateWithLifecycle()
 
     var permissionGranted by remember { mutableStateOf(AudioPermissions.hasPermission(context)) }
     var playerExpanded by remember { mutableStateOf(false) }
@@ -235,8 +236,12 @@ fun AppRoot(
             library.songs.filter { FolderPaths.isInsideAny(it.path, folders) }
         }
     }
-    val effectiveAlbums = remember(effectiveSongs) { LibraryAggregator.albums(effectiveSongs) }
-    val effectiveArtists = remember(effectiveSongs) { LibraryAggregator.artists(effectiveSongs) }
+    val effectiveAlbums = remember(effectiveSongs, artistConfig) {
+        LibraryAggregator.albums(effectiveSongs, artistConfig)
+    }
+    val effectiveArtists = remember(effectiveSongs, artistConfig) {
+        LibraryAggregator.artists(effectiveSongs, artistConfig)
+    }
 
     val sortedSongs = remember(effectiveSongs, sorts[SortTarget.SONGS]) {
         LibrarySorter.songs(effectiveSongs, sorts[SortTarget.SONGS] ?: SortSpec.DEFAULT)
@@ -310,7 +315,7 @@ fun AppRoot(
                 ListSections.flatIndexOf(albumSections) { it.id == song.albumId }
 
             else -> {
-                val name = song.artistNames.firstOrNull()
+                val name = artistConfig.names(song.artist).firstOrNull()
                 ListSections.flatIndexOf(artistSections) { it.name == name }
             }
         }
@@ -489,10 +494,17 @@ fun AppRoot(
                         isScanning = library.isScanning,
                         lastScanMillis = library.lastScanMillis,
                         versionName = BuildConfig.VERSION_NAME,
+                        splitArtists = artistConfig.splitMultiArtist,
+                        ignoreArtistParens = artistConfig.ignoreParentheses,
+                        extraArtistSeparators = artistConfig.extraSeparators,
                         onRescan = { libraryViewModel.refresh() },
                         onAddFolder = { folderPicker.launch(null) },
                         onRemoveFolder = { libraryViewModel.removeFolder(it) },
                         onToggleOnlyFolders = { libraryViewModel.setOnlyFolders(it) },
+                        onToggleSplitArtists = { libraryViewModel.setSplitArtists(it) },
+                        onToggleIgnoreArtistParens = { libraryViewModel.setIgnoreArtistParens(it) },
+                        onAddArtistSeparators = { libraryViewModel.setArtistSeparators(it) },
+                        onRemoveArtistSeparator = { libraryViewModel.removeArtistSeparator(it) },
                     )
                 }
                 composable(Routes.ARTISTS) {
@@ -509,19 +521,19 @@ fun AppRoot(
                     ),
                 ) { entry ->
                     val artistName = entry.arguments?.getString(Routes.ARG_ARTIST_NAME).orEmpty()
-                    val artist = library.artists.firstOrNull { it.name == artistName }
+                    val artist = effectiveArtists.firstOrNull { it.name == artistName }
                     if (artist == null) {
                         LaunchedEffect(artistName) { navController.popBackStack() }
                     } else {
-                        val artistSongs = remember(artistName, library.songs) {
+                        val artistSongs = remember(artistName, effectiveSongs, artistConfig) {
                             LibraryAggregator.sortArtistSongs(
-                                // 多歌手歌曲会同时归属到每一位歌手名下
-                                library.songs.filter { artistName in it.artistNames },
+                                // 多歌手歌曲会同时归属到每一位歌手名下（配置里关掉拆分则整串算一位）
+                                effectiveSongs.filter { artistName in artistConfig.names(it.artist) },
                             )
                         }
-                        val artistAlbums = remember(artistSongs, library.albums) {
+                        val artistAlbums = remember(artistSongs, effectiveAlbums) {
                             val albumIds = artistSongs.map { it.albumId }.toSet()
-                            library.albums.filter { it.id in albumIds }
+                            effectiveAlbums.filter { it.id in albumIds }
                         }
                         ArtistDetailScreen(
                             artist = artist,
@@ -556,9 +568,13 @@ fun AppRoot(
                 onModeClick = { playModeSheetVisible = true },
                 onQueueClick = { queueSheetVisible = true },
                 onTitleClick = onJumpToCurrentSong,
-                onArtistClick = { name ->
-                    playerExpanded = false
-                    navController.navigate(Routes.artistDetail(name))
+                onArtistClick = {
+                    // 用归一化后的第一位歌手名，否则「周杰伦、费玉清」这种会在歌手页找不到
+                    val name = playback.currentSong?.let { artistConfig.names(it.artist).firstOrNull() }
+                    if (name != null) {
+                        playerExpanded = false
+                        navController.navigate(Routes.artistDetail(name))
+                    }
                 },
                 onAlbumClick = { albumId ->
                     playerExpanded = false

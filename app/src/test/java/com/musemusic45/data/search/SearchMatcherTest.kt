@@ -37,6 +37,28 @@ class SearchMatcherTest {
         assertEquals("zjl", initialsFromPinyin("Zhou Jie Lun"))
     }
 
+    @Test
+    fun `以元音开头的音节要去掉声调`() {
+        // 「阿尔法」的转写是 "ā ěr fǎ"。
+        // ā、ě 本身也是字母，不先去声调就会得到 "āěf"，导致搜 aef 搜不到。
+        assertEquals("aef", initialsFromPinyin("ā ěr fǎ"))
+        assertEquals("ad", initialsFromPinyin("ā dù"))
+    }
+
+    @Test
+    fun `单个音节只取一个首字母`() {
+        // 这三个都是一个音节，首字母就是一个，不是两个
+        assertEquals("a", initialsFromPinyin("ài"))
+        assertEquals("a", initialsFromPinyin("ān"))
+        assertEquals("o", initialsFromPinyin("ōu"))
+    }
+
+    @Test
+    fun `辅音开头的音节本来就正常`() {
+        assertEquals("fyq", initialsFromPinyin("fèi yù qīng"))
+        assertEquals("zjl", initialsFromPinyin("zhōu jié lún"))
+    }
+
     // ---------------------------------------------------------- 匹配
 
     @Test

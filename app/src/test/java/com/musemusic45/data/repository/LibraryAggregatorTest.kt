@@ -1,5 +1,6 @@
 package com.musemusic45.data.repository
 
+import com.musemusic45.data.model.ArtistParsingConfig
 import com.musemusic45.data.model.Song
 import com.musemusic45.data.model.testSong
 import org.junit.Assert.assertEquals
@@ -381,5 +382,62 @@ class LibraryAggregatorTest {
             com.musemusic45.data.model.Album(1, "A", "x", 2000, 1, 5),
         )
         assertEquals(1L, LibraryAggregator.earliestAlbum(albums)?.id)
+    }
+
+    // ------------------------------------ 第四批：歌手解析可配置
+
+    @Test
+    fun `关掉拆分后合并条目又回来了`() {
+        val songs = listOf(testSong(1, artist = "周杰伦、费玉清"))
+        val names = LibraryAggregator
+            .artists(songs, ArtistParsingConfig(splitMultiArtist = false))
+            .map { it.name }
+        assertEquals(listOf("周杰伦、费玉清"), names)
+    }
+
+    @Test
+    fun `关掉括号归一化后不再合并`() {
+        val songs = listOf(
+            testSong(1, artist = "某某（xxx）"),
+            testSong(2, artist = "某某"),
+        )
+        val names = LibraryAggregator
+            .artists(songs, ArtistParsingConfig(ignoreParentheses = false))
+            .map { it.name }
+            .toSet()
+        assertEquals(setOf("某某（xxx）", "某某"), names)
+    }
+
+    @Test
+    fun `追加分隔符会影响归类`() {
+        val songs = listOf(testSong(1, artist = "A&B"))
+        // 默认配置下 & 不是分隔符
+        assertEquals(
+            listOf("A&B"),
+            LibraryAggregator.artists(songs).map { it.name },
+        )
+        // 把 & 追加进分隔符后拆成两位
+        assertEquals(
+            setOf("A", "B"),
+            LibraryAggregator
+                .artists(songs, ArtistParsingConfig(extraSeparators = "&"))
+                .map { it.name }
+                .toSet(),
+        )
+    }
+
+    @Test
+    fun `配置变化会同时影响专辑歌手`() {
+        val songs = listOf(
+            testSong(1, artist = "x", albumArtist = "某某（合辑）"),
+            testSong(2, artist = "y", albumArtist = "某某（精选）"),
+        )
+        // 默认忽略括号 → 归一化后同名，算一位专辑歌手
+        assertEquals("某某", LibraryAggregator.albumArtist(songs))
+        // 关掉归一化 → 两位不同的歌手，专辑显示「多位歌手」
+        assertEquals(
+            LibraryAggregator.VARIOUS_ARTISTS,
+            LibraryAggregator.albumArtist(songs, ArtistParsingConfig(ignoreParentheses = false)),
+        )
     }
 }

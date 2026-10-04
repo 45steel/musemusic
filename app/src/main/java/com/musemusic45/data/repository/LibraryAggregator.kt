@@ -3,6 +3,7 @@ package com.musemusic45.data.repository
 import com.musemusic45.data.model.Album
 import com.musemusic45.data.model.Artist
 import com.musemusic45.data.model.ArtistNames
+import com.musemusic45.data.model.ArtistParsingConfig
 import com.musemusic45.data.model.Song
 import com.musemusic45.data.model.compareByName
 
@@ -16,13 +17,13 @@ object LibraryAggregator {
     /** 专辑内出现多个歌手时，专辑卡片上显示的歌手名。 */
     const val VARIOUS_ARTISTS = "多位歌手"
 
-    fun albums(songs: List<Song>): List<Album> =
+    fun albums(songs: List<Song>, artistConfig: ArtistParsingConfig = ArtistParsingConfig()): List<Album> =
         songs.groupBy { it.albumId }
             .map { (albumId, group) ->
                 Album(
                     id = albumId,
                     name = group.first().album,
-                    artist = albumArtist(group),
+                    artist = albumArtist(group, artistConfig),
                     year = albumYear(group),
                     songCount = group.size,
                     dateAddedSec = group.minOf { it.dateAddedSec },
@@ -32,14 +33,19 @@ object LibraryAggregator {
     /**
      * 按歌手聚合。
      *
-     * 第二版起：一首歌如果有多名歌手（`周杰伦、费玉清`），会**分别计入两位歌手**，
-     * 而不是生成一个只此一家的「周杰伦、费玉清」条目。
-     * 歌手名先做归一化（去掉括号内容），所以「某某（xxx）」和「某某」会合并。
+     * 一首歌如果有多名歌手（`周杰伦、费玉清`），会**分别计入每一位歌手**
+     * —— 前提是配置里 [ArtistParsingConfig.splitMultiArtist] 为 true。
+     * 歌手名先做归一化（去掉括号内容），所以「某某（xxx）」和「某某」会合并
+     * —— 同样受 [ArtistParsingConfig.ignoreParentheses] 控制。
      */
-    fun artists(songs: List<Song>): List<Artist> {
-        val byName = songs.flatMap { song -> song.artistNames.map { name -> name to song } }
-            .groupBy({ it.first }, { it.second })
-        val albumById = albums(songs).associateBy { it.id }
+    fun artists(
+        songs: List<Song>,
+        artistConfig: ArtistParsingConfig = ArtistParsingConfig(),
+    ): List<Artist> {
+        val byName = songs.flatMap { song ->
+            artistConfig.names(song.artist).map { name -> name to song }
+        }.groupBy({ it.first }, { it.second })
+        val albumById = albums(songs, artistConfig).associateBy { it.id }
 
         return byName.map { (name, group) ->
             val albumIds = group.map { it.albumId }.distinct()
@@ -83,14 +89,18 @@ object LibraryAggregator {
      * 只有专辑歌手才能把它们归成一张专辑。标签缺失时退回单曲歌手，
      * 仍然不一致就显示「多位歌手」。
      */
-    fun albumArtist(songs: List<Song>): String {
-        val tagged = songs.map { ArtistNames.normalize(it.albumArtist) }
+    fun albumArtist(
+        songs: List<Song>,
+        artistConfig: ArtistParsingConfig = ArtistParsingConfig(),
+    ): String {
+        val tagged = songs.map { ArtistNames.normalize(it.albumArtist, artistConfig.ignoreParentheses) }
             .filter { it.isNotBlank() && it != Song.UNKNOWN_ARTIST }
             .distinct()
         if (tagged.size == 1) return tagged.first()
 
         // 归一化后再比，避免「A（x）」和「A（y）」被当成两位歌手
-        val distinct = songs.map { ArtistNames.normalize(it.artist) }.distinct()
+        val distinct = songs.map { ArtistNames.normalize(it.artist, artistConfig.ignoreParentheses) }
+            .distinct()
         return when {
             distinct.isEmpty() -> Song.UNKNOWN_ARTIST
             distinct.size == 1 -> distinct.first()

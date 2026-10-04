@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.musemusic45.data.model.ArtistParsingConfig
 import com.musemusic45.data.model.SortField
 import com.musemusic45.data.model.SortOrder
 import com.musemusic45.data.model.SortSpec
@@ -18,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -49,6 +51,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val _onlyFolders = MutableStateFlow(false)
     val onlyFolders: StateFlow<Boolean> = _onlyFolders.asStateFlow()
 
+    /**
+     * 歌手解析配置（拆多歌手 / 忽略括号 / 分隔符）。
+     *
+     * 它参与聚合，所以改动后要重新归类 —— 见下面的 collect。
+     */
+    private val _artistConfig = MutableStateFlow(ArtistParsingConfig())
+    val artistConfig: StateFlow<ArtistParsingConfig> = _artistConfig.asStateFlow()
+
     init {
         // 恢复上次的排序偏好
         viewModelScope.launch {
@@ -59,15 +69,48 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
         viewModelScope.launch { settings.folders.collect { _folders.value = it } }
         viewModelScope.launch { settings.onlyFolders.collect { _onlyFolders.value = it } }
+
+        // 歌手配置一改，立刻按新规则重新归类（不重新扫描媒体库），并重建搜索索引
+        viewModelScope.launch {
+            combine(
+                settings.splitArtists,
+                settings.ignoreArtistParens,
+                settings.extraArtistSeparators,
+            ) { split, ignoreParens, extraSeparators ->
+                ArtistParsingConfig(split, ignoreParens, extraSeparators)
+            }.collect { config ->
+                if (config != _artistConfig.value) {
+                    Log.i(TAG, "歌手配置变化: $config")
+                    _artistConfig.value = config
+                    repository.reaggregate(config)
+                    rebuildSearchIndex()
+                }
+            }
+        }
     }
 
-    /** 首次进入或用户手动触发时调用。 */
+    /**
+     * 首次进入或用户手动触发时调用。
+     *
+     * **必须自己先把配置读出来**：`viewModelScope` 是 Main.immediate，
+     * 这个 launch 体会在调用点同步跑起来，而 init 里那个 collect 还没拿到
+     * DataStore 的值。不自己读的话，首次扫描会用默认配置发布结果，
+     * 之后的 reaggregate 又发生在歌曲还为空的时候 —— 两边都白做。
+     */
     fun refresh() {
         viewModelScope.launch {
-            repository.refresh()
+            val config = loadArtistConfig()
+            _artistConfig.value = config
+            repository.refresh(config)
             rebuildSearchIndex()
         }
     }
+
+    private suspend fun loadArtistConfig(): ArtistParsingConfig = ArtistParsingConfig(
+        splitMultiArtist = settings.splitArtists.first(),
+        ignoreParentheses = settings.ignoreArtistParens.first(),
+        extraSeparators = settings.extraArtistSeparators.first(),
+    )
 
     private suspend fun rebuildSearchIndex() {
         _searchIndex.value = null
@@ -125,6 +168,24 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun setOnlyFolders(enabled: Boolean) {
         viewModelScope.launch { settings.setOnlyFolders(enabled) }
+    }
+
+    // ------------------------------------------------------------ 歌手归类
+
+    fun setSplitArtists(enabled: Boolean) {
+        viewModelScope.launch { settings.setSplitArtists(enabled) }
+    }
+
+    fun setIgnoreArtistParens(enabled: Boolean) {
+        viewModelScope.launch { settings.setIgnoreArtistParens(enabled) }
+    }
+
+    fun setArtistSeparators(separators: String) {
+        viewModelScope.launch { settings.addArtistSeparators(separators) }
+    }
+
+    fun removeArtistSeparator(separator: Char) {
+        viewModelScope.launch { settings.removeArtistSeparator(separator) }
     }
 
     companion object {

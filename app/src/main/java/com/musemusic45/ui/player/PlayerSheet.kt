@@ -72,7 +72,7 @@ fun PlayerSheet(
     onModeClick: () -> Unit,
     onQueueClick: () -> Unit,
     onTitleClick: () -> Unit,
-    onArtistClick: (String) -> Unit,
+    onArtistClick: () -> Unit,
     onAlbumClick: (Long) -> Unit,
     lyricsState: LyricsState,
     modifier: Modifier = Modifier,
@@ -208,11 +208,7 @@ fun PlayerSheet(
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier
                                         .weight(1f, fill = false)
-                                        .clickable {
-                                            // 传给上层的是归一化后的歌手名，
-                                            // 否则「周杰伦、费玉清」这种会在歌手页找不到
-                                            onArtistClick(song.artistNames.firstOrNull() ?: song.artist)
-                                        },
+                                        .clickable { onArtistClick() },
                                 )
                                 Text(
                                     text = " · ",
