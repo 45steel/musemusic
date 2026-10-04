@@ -422,24 +422,9 @@ class PlaybackController(private val context: Context) {
 
     private fun applyModeToPlayer() {
         val player = controller ?: return
-        when (currentMode) {
-            PlayMode.LIST_LOOP -> {
-                player.repeatMode = Player.REPEAT_MODE_ALL
-                player.shuffleModeEnabled = false
-            }
-
-            PlayMode.SHUFFLE -> {
-                player.repeatMode = Player.REPEAT_MODE_ALL
-                player.shuffleModeEnabled = true
-            }
-
-            // 按专辑播放必须关掉循环：单专辑队列如果自己转圈，
-            // 就永远播不完，也就永远触发不了"换下一张专辑"。
-            PlayMode.ALBUM_SHUFFLE -> {
-                player.repeatMode = Player.REPEAT_MODE_OFF
-                player.shuffleModeEnabled = false
-            }
-        }
+        val settings = PlayerModeSettings.of(currentMode)
+        player.repeatMode = settings.repeatMode
+        player.shuffleModeEnabled = settings.shuffle
     }
 
     private fun syncFromPlayer() {

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -106,6 +107,7 @@ fun PlayModeSheet(
 
 private fun iconFor(mode: PlayMode): ImageVector = when (mode) {
     PlayMode.LIST_LOOP -> Icons.Filled.Repeat
+    PlayMode.SINGLE_LOOP -> Icons.Filled.RepeatOne
     PlayMode.SHUFFLE -> Icons.Filled.Shuffle
     PlayMode.ALBUM_SHUFFLE -> Icons.Filled.Album
 }

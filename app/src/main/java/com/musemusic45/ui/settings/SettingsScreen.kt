@@ -59,6 +59,7 @@ fun SettingsScreen(
     extraArtistSeparators: String,
     stopOnTaskRemoved: Boolean,
     hiddenCount: Int,
+    predictiveBack: Boolean,
     onRescan: () -> Unit,
     onAddFolder: () -> Unit,
     onRemoveFolder: (String) -> Unit,
@@ -69,6 +70,7 @@ fun SettingsScreen(
     onRemoveArtistSeparator: (Char) -> Unit,
     onToggleStopOnTaskRemoved: (Boolean) -> Unit,
     onUnhideAllSongs: () -> Unit,
+    onTogglePredictiveBack: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // 输入框只用于"添加"，添加完就清空，所以不需要跟 DataStore 同步
@@ -292,6 +294,20 @@ fun SettingsScreen(
                     "打开后划掉就会停止播放并结束后台服务。",
                 checked = stopOnTaskRemoved,
                 onCheckedChange = onToggleStopOnTaskRemoved,
+            )
+        }
+
+        Spacer(Modifier.height(16.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+
+        SectionTitle("操作手感")
+        Column(Modifier.padding(horizontal = 16.dp)) {
+            SwitchRow(
+                title = "预测式返回动画",
+                subtitle = "系统返回手势拖动时，当前页跟着手指缩小淡出，松手才真正返回。" +
+                    "需要 Android 13 及以上；关掉就用普通返回。",
+                checked = predictiveBack,
+                onCheckedChange = onTogglePredictiveBack,
             )
         }
 

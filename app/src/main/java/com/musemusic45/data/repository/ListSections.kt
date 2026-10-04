@@ -115,4 +115,42 @@ object ListSections {
         }
         return -1
     }
+
+    /**
+     * 每个分段在扁平列表里的**起始下标**（有标题时那一位就是标题）。
+     *
+     * 滚动条要用它把"拖到某个位置"翻译成"这是哪一段"，
+     * 好在气泡里显示对应的字母。
+     */
+    fun <T> flatStartIndices(sections: List<ListSection<T>>): List<Int> {
+        val starts = ArrayList<Int>(sections.size)
+        var index = 0
+        for (section in sections) {
+            starts += index
+            index += (if (section.showHeader) 1 else 0) + section.items.size
+        }
+        return starts
+    }
+
+    /** 扁平列表的总项数（标题占位也算一项）。 */
+    fun <T> flatCount(sections: List<ListSection<T>>): Int {
+        var index = 0
+        for (section in sections) {
+            index += (if (section.showHeader) 1 else 0) + section.items.size
+        }
+        return index
+    }
+
+    /**
+     * 只取**有标题**的分段：返回（段标题, 该段在扁平列表里的起始下标）。
+     *
+     * 滚动条气泡要用它。按添加时间排序时整列只有一段且没有标题，
+     * 这时返回空列表 —— 气泡自然就不显示，不会冒出一个空白的圆角块。
+     */
+    fun <T> headerStarts(sections: List<ListSection<T>>): List<Pair<String, Int>> {
+        val starts = flatStartIndices(sections)
+        return sections.indices
+            .filter { sections[it].showHeader }
+            .map { sections[it].key to starts[it] }
+    }
 }

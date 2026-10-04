@@ -8,6 +8,7 @@ import android.os.Build
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
@@ -15,7 +16,9 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -59,6 +62,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -66,6 +70,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -97,6 +104,8 @@ import com.musemusic45.ui.albums.AlbumsScreen
 import com.musemusic45.ui.artists.ArtistDetailScreen
 import com.musemusic45.ui.artists.ArtistsScreen
 import com.musemusic45.ui.components.EmptyLibraryScreen
+import com.musemusic45.ui.components.FloatingNavBar
+import com.musemusic45.ui.components.FloatingNavItem
 import com.musemusic45.ui.components.MiniPlayer
 import com.musemusic45.ui.components.PermissionScreen
 import com.musemusic45.ui.components.SortSheet
@@ -111,6 +120,7 @@ import com.musemusic45.ui.theme.AppShapes
 import com.musemusic45.ui.theme.formatRoundLabel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.coroutines.cancellation.CancellationException
 
 /** 底部导航的三个一级页。 */
 enum class MainTab(
@@ -142,6 +152,7 @@ fun AppRoot(
     val onlyFolders by libraryViewModel.onlyFolders.collectAsStateWithLifecycle()
     val artistConfig by libraryViewModel.artistConfig.collectAsStateWithLifecycle()
     val stopOnTaskRemoved by libraryViewModel.stopOnTaskRemoved.collectAsStateWithLifecycle()
+    val predictiveBackEnabled by libraryViewModel.predictiveBack.collectAsStateWithLifecycle()
     val hiddenCount by libraryViewModel.hiddenCount.collectAsStateWithLifecycle()
 
     var permissionGranted by remember { mutableStateOf(AudioPermissions.hasPermission(context)) }
@@ -214,6 +225,41 @@ fun AppRoot(
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route ?: Routes.SONGS
+
+    /**
+     * 导航过渡进行中。
+     *
+     * 过渡期间旧页面仍然在组合里、仍然能收到点击 —— 从专辑/歌手详情返回时
+     * 快速点一下就会误触播放。第七批的做法是把动画压到 180ms 躲避，
+     * 这一批改成**保留动画 + 过渡期间盖一层吃掉所有点击的遮罩**。
+     */
+    var navTransitioning by remember { mutableStateOf(false) }
+
+    /** 预测式返回的手势进度（0..1）。手没动时是 0。 */
+    var predictiveBackProgress by remember { mutableFloatStateOf(0f) }
+
+    val canPopBack = navController.previousBackStackEntry != null
+
+    // 每次切换目的地都把过渡标记立起来，动画放完再放下
+    LaunchedEffect(backStackEntry?.id) {
+        navTransitioning = true
+        delay(NAV_ANIMATION_MS.toLong())
+        navTransitioning = false
+    }
+
+    // 预测式返回：跟手缩放淡出，手势完成才真正返回、取消则弹回
+    if (predictiveBackEnabled && canPopBack) {
+        PredictiveBackHandler { progress ->
+            try {
+                progress.collect { predictiveBackProgress = it.progress }
+                predictiveBackProgress = 0f
+                navController.popBackStack()
+            } catch (cancel: CancellationException) {
+                predictiveBackProgress = 0f
+                throw cancel
+            }
+        }
+    }
 
     BackHandler(enabled = playerExpanded) { playerExpanded = false }
     BackHandler(enabled = sortSheetTarget != null) { sortSheetTarget = null }
@@ -408,43 +454,59 @@ fun AppRoot(
                         onPrevious = { playerViewModel.previous() },
                         onNext = { playerViewModel.next() },
                     )
-                    NavigationBar {
-                        MainTab.entries.forEach { tab ->
-                            NavigationBarItem(
-                                selected = currentRoute == tab.route,
-                                onClick = {
-                                    navController.navigate(tab.route) {
-                                        popUpTo(navController.graph.findStartDestination().id) {
-                                            saveState = true
-                                        }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                },
-                                icon = {
-                                    Icon(
-                                        imageVector = tab.icon,
-                                        contentDescription = stringResource(tab.labelRes),
-                                    )
-                                },
-                                label = { Text(stringResource(tab.labelRes)) },
+                    FloatingNavBar(
+                        items = MainTab.entries.map { tab ->
+                            FloatingNavItem(
+                                route = tab.route,
+                                label = stringResource(tab.labelRes),
+                                icon = tab.icon,
                             )
-                        }
-                    }
+                        },
+                        selectedRoute = currentRoute,
+                        onSelect = { route ->
+                            navController.navigate(route) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                    )
                 }
             },
         ) { innerPadding ->
+            Box(Modifier.padding(innerPadding)) {
             NavHost(
                 navController = navController,
                 startDestination = Routes.SONGS,
-                modifier = Modifier.padding(innerPadding),
-                // 第七批：Navigation Compose 的默认过渡是 700ms，退出动画期间旧页面
-                // 仍然能收到点击（从专辑/歌手详情返回时会误触播放）。压到 180ms，
-                // 误触窗口缩到基本不可能命中。
-                enterTransition = { fadeIn(tween(NAV_ANIMATION_MS)) },
-                exitTransition = { fadeOut(tween(NAV_ANIMATION_MS)) },
-                popEnterTransition = { fadeIn(tween(NAV_ANIMATION_MS)) },
-                popExitTransition = { fadeOut(tween(NAV_ANIMATION_MS)) },
+                modifier = Modifier
+                    .fillMaxSize()
+                    // 预测式返回：手势过程中按进度缩放淡出当前页
+                    .graphicsLayer {
+                        val p = predictiveBackProgress
+                        scaleX = 1f - PREDICTIVE_BACK_SCALE * p
+                        scaleY = 1f - PREDICTIVE_BACK_SCALE * p
+                        alpha = 1f - PREDICTIVE_BACK_FADE * p
+                    },
+                // 第十批：把返回动画做回来（第七批为了躲误触压到了 180ms，
+                // 但正确做法是保留动画 + 屏蔽过渡期间的输入，见下面的遮罩层）。
+                enterTransition = {
+                    fadeIn(tween(NAV_ANIMATION_MS)) +
+                        slideInHorizontally(tween(NAV_ANIMATION_MS)) { it / 10 }
+                },
+                exitTransition = {
+                    fadeOut(tween(NAV_ANIMATION_MS)) +
+                        slideOutHorizontally(tween(NAV_ANIMATION_MS)) { -it / 10 }
+                },
+                popEnterTransition = {
+                    fadeIn(tween(NAV_ANIMATION_MS)) +
+                        slideInHorizontally(tween(NAV_ANIMATION_MS)) { -it / 10 }
+                },
+                popExitTransition = {
+                    fadeOut(tween(NAV_ANIMATION_MS)) +
+                        slideOutHorizontally(tween(NAV_ANIMATION_MS)) { it / 10 }
+                },
             ) {
                 composable(Routes.SONGS) {
                     if (libraryEmpty) {
@@ -520,6 +582,7 @@ fun AppRoot(
                         extraArtistSeparators = artistConfig.extraSeparators,
                         stopOnTaskRemoved = stopOnTaskRemoved,
                         hiddenCount = hiddenCount,
+                        predictiveBack = predictiveBackEnabled,
                         onRescan = { libraryViewModel.refresh() },
                         onAddFolder = { folderPicker.launch(null) },
                         onRemoveFolder = { libraryViewModel.removeFolder(it) },
@@ -530,6 +593,7 @@ fun AppRoot(
                         onRemoveArtistSeparator = { libraryViewModel.removeArtistSeparator(it) },
                         onToggleStopOnTaskRemoved = { libraryViewModel.setStopOnTaskRemoved(it) },
                         onUnhideAllSongs = { libraryViewModel.unhideAllSongs() },
+                        onTogglePredictiveBack = { libraryViewModel.setPredictiveBack(it) },
                     )
                 }
                 composable(Routes.ARTISTS) {
@@ -571,6 +635,25 @@ fun AppRoot(
                             onSongLongClick = { index -> pendingRemove = artistSongs.getOrNull(index) },
                         )
                     }
+                }
+            }
+
+                // 过渡期间盖一层透明遮罩，把落向旧页面的点击全部吃掉。
+                // 第七批只是把动画压短来躲避误触；这里是真正的屏蔽 ——
+                // 动画可以做得好看，同时保证过渡中点什么都没反应。
+                if (navTransitioning) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                                        event.changes.forEach { it.consume() }
+                                    }
+                                }
+                            },
+                    )
                 }
             }
         }
@@ -871,7 +954,13 @@ private const val EXIT_WINDOW_MS = 2000L
 /**
  * 导航过渡时长。
  *
- * Navigation Compose 默认 700ms，退出动画期间旧页面仍能收到点击，
- * 从专辑/歌手详情返回时容易误触播放。压到 180ms 把窗口缩到基本不可能命中。
+ * 第七批为了躲避"退出动画期间误触播放"把它压到 180ms（默认是 700ms）。
+ * 第十批改回有存在感的 300ms —— 误触改由过渡遮罩解决，不再靠牺牲动画。
  */
-private const val NAV_ANIMATION_MS = 180
+private const val NAV_ANIMATION_MS = 300
+
+/** 预测式返回手势拉到底时，当前页缩小的比例。 */
+private const val PREDICTIVE_BACK_SCALE = 0.08f
+
+/** 预测式返回手势拉到底时，当前页淡出的比例。 */
+private const val PREDICTIVE_BACK_FADE = 0.4f
