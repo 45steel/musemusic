@@ -11,7 +11,7 @@
 |---|---|
 | Android 13（API 33）及以上 | `READ_MEDIA_AUDIO` |
 | Android 12（API 32）及以下 | `READ_EXTERNAL_STORAGE`（`maxSdkVersion=32`） |
-| 实测表现 | 首次启动显示权限引导页；点「去授权」弹出系统弹窗，文案为「要允许"本地音乐"访问此设备上的音乐和音频吗？」；授权后立即开始扫描 |
+| 实测表现 | 首次启动显示权限引导页；点「去授权」弹出系统弹窗，文案为「要允许"缪斯音乐"访问此设备上的音乐和音频吗？」；授权后立即开始扫描 |
 
 **决定**：`AudioPermissions` 按 API 等级选择权限数组，UI 用 `RequestMultiplePermissions` 申请。
 

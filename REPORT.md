@@ -1,4 +1,4 @@
-# 本地音乐 · 开发执行报告
+# 缪斯音乐 · 开发执行报告
 
 > 依据 `DEVPLAN.md` 执行 M0–M11 全部里程碑。
 > 验证环境：MuMu Player 15（Android 15 / API 35），1080×1920。
@@ -188,7 +188,7 @@ Compose 化改造、三个 Tab、迷你播放器、播放页覆盖层、返回�
 M11 期间出现「App 启动被取消、日志全无」的现象。排查结果是：系统里残留一个 **Z（僵尸）状态的进程**（pid 16644），ActivityManager 的记录一直挂在它上面，导致后续每次启动都等 10 秒后被取消：
 
 ```
-E ActivityManager: ProcessRecord{...com.localmusic.player...} 16644 refused to die
+E ActivityManager: ProcessRecord{...com.musemusic45...} 16644 refused to die
    while trying to launch ..., cancelling the process start
 ```
 

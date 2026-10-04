@@ -1,4 +1,4 @@
-# 本地音乐 · 开发计划
+# 缪斯音乐 · 开发计划
 
 > 依据：`DESIGN.md`（页面结构与交互设计定稿）
 > 目标产物：一个可安装到 Android 手机上的纯本地音乐播放器
@@ -92,7 +92,7 @@ $dev  = '127.0.0.1:16384'
 
 # 安装并启动
 & $adb -s $dev install -r "$proj\app\build\outputs\apk\debug\app-debug.apk"
-& $adb -s $dev shell am start -n com.localmusic.player/.MainActivity
+& $adb -s $dev shell am start -n com.musemusic45/.MainActivity
 
 # 看日志（只看本 App 和崩溃）
 & $adb -s $dev logcat -d -s LocalMusic:V AndroidRuntime:E

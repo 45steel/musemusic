@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.localmusic.player"
+    namespace = "com.musemusic45"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.localmusic.player"
+        applicationId = "com.musemusic45"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

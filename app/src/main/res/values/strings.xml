@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">本地音乐</string>
+    <string name="app_name">缪斯音乐</string>
 
     <string name="tab_songs">歌曲</string>
     <string name="tab_albums">专辑</string>

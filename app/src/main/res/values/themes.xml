@@ -2,10 +2,10 @@
 <resources>
     <!--
       纯 Compose 应用：XML 主题只负责窗口本身（状态栏/导航栏由 enableEdgeToEdge 处理），
-      界面配色全部由 Compose 的 LocalMusicTheme 决定。
+      界面配色全部由 Compose 的 MuseMusicTheme 决定。
       因此这里使用平台主题，不依赖 Material Components 的 XML 主题。
     -->
-    <style name="Theme.LocalMusic" parent="android:Theme.Material.Light.NoActionBar">
+    <style name="Theme.MuseMusic" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/window_background</item>
     </style>
 </resources>

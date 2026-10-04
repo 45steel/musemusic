@@ -1,4 +1,4 @@
-# 本地音乐 · 产品需求文档（PRD）
+# 缪斯音乐 · 产品需求文档（PRD）
 
 > 依据：`DESIGN.md`（页面结构与交互设计定稿）、`DEVPLAN.md`（开发计划）
 > 版本：第一版
@@ -552,5 +552,5 @@ App 自身的状态存在应用私有目录（DataStore），包括：
 | Android SDK | `D:\Android\sdk` |
 | Gradle | `D:\Android\gradle-8.9`（依赖缓存在 `D:\Android\gradle-home`） |
 | JDK | `C:\Program Files\Java\jdk-21` |
-| 包名 | `com.localmusic.player` |
-| 应用名 | 本地音乐 |
+| 包名 | `com.musemusic45` |
+| 应用名 | 缪斯音乐 |
