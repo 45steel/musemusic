@@ -34,6 +34,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -109,7 +111,6 @@ import com.musemusic45.ui.albums.AlbumsScreen
 import com.musemusic45.ui.artists.ArtistDetailScreen
 import com.musemusic45.ui.artists.ArtistsScreen
 import com.musemusic45.ui.components.EmptyLibraryScreen
-import com.musemusic45.ui.components.BackGestureIndicator
 import com.musemusic45.ui.components.FloatingNavBar
 import com.musemusic45.ui.components.FloatingNavItem
 import com.musemusic45.ui.components.MiniPlayer
@@ -250,10 +251,6 @@ fun AppRoot(
     var predictiveBackProgress by remember { mutableFloatStateOf(0f) }
     var predictiveBackEdge by remember { mutableIntStateOf(BackEventCompat.EDGE_LEFT) }
 
-    /** 手指位置（窗口坐标），用来把箭头指示器画在手指旁边。 */
-    var predictiveTouchX by remember { mutableFloatStateOf(0f) }
-    var predictiveTouchY by remember { mutableFloatStateOf(0f) }
-
     /**
      * 手势刚完成、动画已经被手势做完了。
      *
@@ -292,8 +289,6 @@ fun AppRoot(
                 progress.collect { event ->
                     predictiveBackProgress = event.progress
                     predictiveBackEdge = event.swipeEdge
-                    predictiveTouchX = event.touchX
-                    predictiveTouchY = event.touchY
                     if (event.progress > 0f) hadProgress = true
                 }
                 predictiveCompleting = hadProgress
@@ -458,69 +453,76 @@ fun AppRoot(
     val libraryEmpty = library.hasScanned && effectiveSongs.isEmpty()
     val showSearchBar = effectiveSongs.isNotEmpty() && sortTarget != null
 
-    Box(Modifier.fillMaxSize()) {
-        Scaffold(
-            topBar = {
-                Column {
-                    if (sortTarget != null) {
-                        AppTopBar(
-                            title = stringResource(tabTitleRes(currentRoute)),
-                            sortLabel = currentSort.displayLabel,
-                            onSortClick = { sortSheetTarget = sortTarget },
-                            onLocateClick = onLocateNowPlaying,
-                            onRescanClick = { libraryViewModel.refresh() },
-                            onSettingsClick = { navController.navigate(Routes.SETTINGS) },
-                        )
-                        if (showSearchBar) {
-                            SearchBarPlaceholder(onClick = { navController.navigate(Routes.SEARCH) })
+    /**
+     * 顶栏。**按传入的目的地渲染** —— 目的地预览层也要用它，
+     * 写死成"当前页"的话，预览里的标题会是当前页的，一眼假。
+     */
+    val renderTopBar: @Composable (androidx.navigation.NavBackStackEntry?) -> Unit = { entry ->
+        val route = entry?.destination?.route ?: Routes.SONGS
+        val target = sortTargetFor(route)
+        val sort = target?.let { sorts[it] } ?: SortSpec.DEFAULT
+        Column {
+            if (target != null) {
+                AppTopBar(
+                    title = stringResource(tabTitleRes(route)),
+                    sortLabel = sort.displayLabel,
+                    onSortClick = { sortSheetTarget = target },
+                    onLocateClick = onLocateNowPlaying,
+                    onRescanClick = { libraryViewModel.refresh() },
+                    onSettingsClick = { navController.navigate(Routes.SETTINGS) },
+                )
+                if (effectiveSongs.isNotEmpty()) {
+                    SearchBarPlaceholder(onClick = { navController.navigate(Routes.SEARCH) })
+                }
+            } else {
+                DetailTopBar(
+                    title = detailTitle(route, entry, library.albums),
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            if (library.isScanning) {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.dp),
+                )
+            }
+        }
+    }
+
+    /** 底栏。两页共用，目的地层照同一份画，缩起来上下才接得上。 */
+    val renderBottomBar: @Composable () -> Unit = {
+        Column {
+            MiniPlayer(
+                song = playback.currentSong,
+                isPlaying = playback.isPlaying,
+                onExpand = { playerExpanded = true },
+                onTogglePlay = { playerViewModel.togglePlayPause() },
+                onPrevious = { playerViewModel.previous() },
+                onNext = { playerViewModel.next() },
+            )
+            FloatingNavBar(
+                items = MainTab.entries.map { tab ->
+                    FloatingNavItem(
+                        route = tab.route,
+                        label = stringResource(tab.labelRes),
+                        icon = tab.icon,
+                    )
+                },
+                selectedRoute = currentRoute,
+                onSelect = { route ->
+                    navController.navigate(route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
                         }
-                    } else {
-                        DetailTopBar(
-                            title = detailTitle(currentRoute, backStackEntry, library.albums),
-                            onBack = { navController.popBackStack() },
-                        )
+                        launchSingleTop = true
+                        restoreState = true
                     }
-                    if (library.isScanning) {
-                        LinearProgressIndicator(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(2.dp),
-                        )
-                    }
-                }
-            },
-            bottomBar = {
-                Column {
-                    MiniPlayer(
-                        song = playback.currentSong,
-                        isPlaying = playback.isPlaying,
-                        onExpand = { playerExpanded = true },
-                        onTogglePlay = { playerViewModel.togglePlayPause() },
-                        onPrevious = { playerViewModel.previous() },
-                        onNext = { playerViewModel.next() },
-                    )
-                    FloatingNavBar(
-                        items = MainTab.entries.map { tab ->
-                            FloatingNavItem(
-                                route = tab.route,
-                                label = stringResource(tab.labelRes),
-                                icon = tab.icon,
-                            )
-                        },
-                        selectedRoute = currentRoute,
-                        onSelect = { route ->
-                            navController.navigate(route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
-                                }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                    )
-                }
-            },
-        ) { innerPadding ->
+                },
+            )
+        }
+    }
+
             /**
              * 各个目的地的渲染内容 —— **单一出处**。
              *
@@ -532,6 +534,22 @@ fun AppRoot(
              */
             val renderDestination: @Composable (androidx.navigation.NavBackStackEntry, Boolean) -> Unit =
                 { entry, asPreview ->
+                    // 预览层必须用**独立的**列表状态。
+                    // Compose 的 LazyListState / LazyGridState 不支持被两个列表同时使用，
+                    // 共用一个的话预览层根本渲染不出内容 —— 表现就是"预览里什么都没有"。
+                    val previewSongsState = remember { LazyListState() }
+                    val previewAlbumsState = remember { LazyGridState() }
+                    val previewArtistsState = remember { LazyListState() }
+                    val songsState = if (asPreview) previewSongsState else songsListState
+                    val albumsState = if (asPreview) previewAlbumsState else albumsGridState
+                    val artistsState = if (asPreview) previewArtistsState else artistsListState
+
+                    // 页面自己要有不透明底色。否则缩小时会看到两页"叠"在一起，
+                    // 而不是干净的上下分层（各页面的内容本来是透明背景的）。
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background,
+                    ) {
                     when (entry.destination.route) {
                         Routes.SONGS -> {
                             if (libraryEmpty) {
@@ -544,7 +562,7 @@ fun AppRoot(
                                         val index = sortedSongs.indexOfFirst { it.id == song.id }
                                         playerViewModel.playSongs(sortedSongs, if (index >= 0) index else 0)
                                     },
-                                    listState = songsListState,
+                                    listState = songsState,
                                     onSongLongClick = { pendingRemove = it },
                                 )
                             }
@@ -554,7 +572,7 @@ fun AppRoot(
                             AlbumsScreen(
                                 sections = albumSections,
                                 onAlbumClick = { navController.navigate(Routes.albumDetail(it.id)) },
-                                gridState = albumsGridState,
+                                gridState = albumsState,
                             )
                         }
 
@@ -628,7 +646,7 @@ fun AppRoot(
                             ArtistsScreen(
                                 sections = artistSections,
                                 onArtistClick = { navController.navigate(Routes.artistDetail(it.name)) },
-                                listState = artistsListState,
+                                listState = artistsState,
                             )
                         }
 
@@ -661,32 +679,50 @@ fun AppRoot(
                             }
                         }
                     }
+                    }
                 }
 
-            Box(Modifier.padding(innerPadding)) {
-            /**
-             * 预测式返回：手势期间把「要去的那一页」画在当前页后面。
-             *
-             * 这一层**完全静止** —— 用户要的是「把当前那个窗口缩小来预览」，
-             * 底下的目的地不动，靠当前页缩小让开自然露出来。
-             * 给目的地也加缩放/透明反而会让两层都在动，看着飘。
-             *
-             * Navigation Compose 不做这件事（2.8、2.9 里一个 Predictive 类都没有），
-             * 它不会在手势期间组合上一个目的地 —— 不自己画的话，当前页缩小后
-             * 露出来的是 Scaffold 底色，一块空白。
-             */
-            val previousEntry = navController.previousBackStackEntry
-            if (predictiveBackProgress > 0f && previousEntry != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        // 必须不透明 —— 各页面本身是透明背景，
-                        // 不铺底色的话两页会"穿透"叠在一起，而不是上下分层
-                        .background(MaterialTheme.colorScheme.background),
-                ) {
-                    renderDestination(previousEntry, true)
+    val predictivePreviousEntry = navController.previousBackStackEntry
+
+    Box(Modifier.fillMaxSize()) {
+        /**
+         * 预测式返回：目的地层，**完全静止，不参与缩放**。
+         *
+         * 用户要的是「把当前那个窗口缩小来预览」—— 动的只该是当前这一层。
+         * 这一层连顶栏底栏一起画全，缩起来四周露出的才是完整的一页。
+         */
+        if (predictiveBackProgress > 0f && predictivePreviousEntry != null) {
+            Column(Modifier.fillMaxSize()) {
+                renderTopBar(predictivePreviousEntry)
+                Box(Modifier.weight(1f)) {
+                    renderDestination(predictivePreviousEntry, true)
                 }
+                renderBottomBar()
             }
+        }
+
+        /**
+         * 当前「窗口」：顶栏 + 内容 + 底栏**整体一起缩放**（照 Google 的做法）。
+         * 只缩内容区的话顶栏不跟着动，和参考图对不上。
+         */
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    val p = predictiveBackProgress
+                    // 从左边缘滑：窗口跟着往右走；从右边缘滑：镜像。
+                    val dir = if (predictiveBackEdge == BackEventCompat.EDGE_LEFT) 1f else -1f
+                    translationX = size.width * PREDICTIVE_EXIT_TRANSLATION * p * dir
+                    val s = 1f - PREDICTIVE_EXIT_SCALE * p
+                    scaleX = s
+                    scaleY = s
+                },
+        ) {
+            Scaffold(
+                topBar = { renderTopBar(backStackEntry) },
+                bottomBar = renderBottomBar,
+            ) { innerPadding ->
+            Box(Modifier.padding(innerPadding)) {
 
             NavHost(
                 navController = navController,
@@ -774,16 +810,6 @@ fun AppRoot(
                 }
             }
         }
-
-        // 预测式返回：跟着手指的圆形箭头指示器。
-        // 放在最外层 Box（不受 Scaffold 内边距影响），因为 touchX/touchY 是窗口坐标。
-        if (predictiveBackProgress > 0f) {
-            BackGestureIndicator(
-                touchX = predictiveTouchX,
-                touchY = predictiveTouchY,
-                // 箭头指着手势前进的方向：从左边缘滑出来是 >，从右边缘滑出来是 <
-                pointsRight = predictiveBackEdge != BackEventCompat.EDGE_RIGHT,
-            )
         }
 
         AnimatedVisibility(
