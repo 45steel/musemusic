@@ -26,6 +26,7 @@ import com.musemusic45.data.model.Album
 import com.musemusic45.data.repository.ListSection
 import com.musemusic45.ui.components.CoverImage
 import com.musemusic45.ui.components.SectionHeader
+import com.musemusic45.ui.theme.AppShapes
 import com.musemusic45.ui.theme.formatAlbumSubtitle
 
 /**
@@ -74,7 +75,7 @@ private fun AlbumCard(album: Album, onClick: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f),
-            shape = RoundedCornerShape(8.dp),
+            shape = RoundedCornerShape(AppShapes.forCoverSize(GRID_COVER_SIZE)),
         )
         Spacer(Modifier.height(6.dp))
         Text(
@@ -99,3 +100,11 @@ private fun AlbumCard(album: Album, onClick: () -> Unit) {
         )
     }
 }
+
+/**
+ * 网格封面的标称尺寸。
+ *
+ * 三列网格里实际宽度随屏幕变化，但圆角按这个档位取就行 ——
+ * 尺寸分档只是为了让圆角与封面大小成比例（见 [AppShapes.forCoverSize]）。
+ */
+private val GRID_COVER_SIZE = 110.dp

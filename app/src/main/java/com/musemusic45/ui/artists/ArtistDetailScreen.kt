@@ -42,6 +42,7 @@ import com.musemusic45.data.repository.LibraryAggregator
 import com.musemusic45.ui.components.ArtistAvatar
 import com.musemusic45.ui.components.CoverImage
 import com.musemusic45.ui.components.ExpandableText
+import com.musemusic45.ui.theme.AppShapes
 import com.musemusic45.ui.theme.formatAlbumSubtitle
 import com.musemusic45.ui.theme.formatArtistSubtitle
 import com.musemusic45.ui.theme.formatDuration
@@ -130,9 +131,7 @@ fun ArtistDetailScreen(
                 onClick = { onSongClick(index) },
                 onLongClick = onSongLongClick?.let { handler -> { handler(index) } },
             )
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-            )
+            // 第八批：去掉逐行分隔线
         }
     }
 }
@@ -145,8 +144,8 @@ private fun SectionTitle(text: String) {
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
     )
 }
 
@@ -162,7 +161,7 @@ private fun ArtistAlbumCard(album: Album, onClick: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f),
-            shape = RoundedCornerShape(8.dp),
+            shape = RoundedCornerShape(AppShapes.forCoverSize(ALBUM_CARD_SIZE)),
         )
         Spacer(Modifier.height(4.dp))
         Text(
@@ -231,3 +230,6 @@ private fun ArtistSongRow(
         )
     }
 }
+
+/** 歌手详情页专辑横滑卡片的尺寸。 */
+private val ALBUM_CARD_SIZE = 110.dp

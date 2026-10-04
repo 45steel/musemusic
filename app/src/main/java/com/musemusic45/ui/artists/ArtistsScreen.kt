@@ -13,7 +13,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -55,7 +54,7 @@ fun ArtistsScreen(
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    ArtistAvatar(name = artist.name, albumId = artist.coverAlbumId)
+                    ArtistAvatar(name = artist.name, albumId = artist.coverAlbumId, size = ARTIST_AVATAR_SIZE)
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
@@ -73,8 +72,11 @@ fun ArtistsScreen(
                         )
                     }
                 }
-                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                // 第八批：去掉逐行分隔线，靠间距与分段标题区分
             }
         }
     }
 }
+
+/** 列表里的歌手头像尺寸。 */
+private val ARTIST_AVATAR_SIZE = 48.dp

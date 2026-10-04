@@ -45,9 +45,8 @@ fun SongsScreen(
                     onClick = { onSongClick(song) },
                     onLongClick = onSongLongClick?.let { handler -> { handler(song) } },
                 )
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                )
+                // 第八批：去掉逐行分隔线 —— M3 的列表靠间距和分段标题区分，
+                // 每行都画线会显得杂乱，也和"不要多余装饰"相悖。
             }
         }
     }

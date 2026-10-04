@@ -35,6 +35,7 @@ import com.musemusic45.data.model.Song
 import com.musemusic45.data.repository.LibraryAggregator
 import com.musemusic45.ui.components.CoverImage
 import com.musemusic45.ui.components.ExpandableText
+import com.musemusic45.ui.theme.AppShapes
 import com.musemusic45.ui.theme.formatAlbumSubtitle
 import com.musemusic45.ui.theme.formatDuration
 
@@ -72,9 +73,7 @@ fun AlbumDetailScreen(
                         onClick = { onSongClick(row.index) },
                         onLongClick = onSongLongClick?.let { handler -> { handler(row.index) } },
                     )
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                    )
+                    // 第八批：去掉逐行分隔线
                 }
             }
         }
@@ -87,8 +86,8 @@ private fun AlbumHeader(album: Album, onPlayAll: () -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             CoverImage(
                 albumId = album.id,
-                modifier = Modifier.size(120.dp),
-                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.size(DETAIL_COVER_SIZE),
+                shape = RoundedCornerShape(AppShapes.forCoverSize(DETAIL_COVER_SIZE)),
             )
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
@@ -135,8 +134,8 @@ private fun DiscHeaderText(disc: Int) {
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
     )
 }
 
@@ -205,3 +204,6 @@ private fun TrackRow(
         )
     }
 }
+
+/** 详情页头部的封面尺寸。 */
+private val DETAIL_COVER_SIZE = 120.dp

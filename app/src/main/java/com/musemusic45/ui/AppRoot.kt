@@ -107,6 +107,7 @@ import com.musemusic45.ui.player.QueueSheet
 import com.musemusic45.ui.search.SearchScreen
 import com.musemusic45.ui.settings.SettingsScreen
 import com.musemusic45.ui.songs.SongsScreen
+import com.musemusic45.ui.theme.AppShapes
 import com.musemusic45.ui.theme.formatRoundLabel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -798,8 +799,8 @@ private fun AppTopBar(
 @Composable
 private fun SearchBarPlaceholder(onClick: () -> Unit) {
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(AppShapes.searchBar),
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)

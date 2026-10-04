@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.musemusic45.data.model.Song
+import com.musemusic45.ui.theme.AppShapes
 import com.musemusic45.ui.theme.formatDuration
 
 /**
@@ -50,7 +52,11 @@ fun SongRow(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CoverImage(albumId = song.albumId, modifier = Modifier.size(44.dp))
+        CoverImage(
+            albumId = song.albumId,
+            modifier = Modifier.size(SONG_COVER_SIZE),
+            shape = RoundedCornerShape(AppShapes.forCoverSize(SONG_COVER_SIZE)),
+        )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
@@ -80,3 +86,6 @@ fun SongRow(
         )
     }
 }
+
+/** 列表行的小封面尺寸。圆角由 [AppShapes.forCoverSize] 按尺寸推出，不再各处写死。 */
+private val SONG_COVER_SIZE = 44.dp

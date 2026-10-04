@@ -42,6 +42,8 @@ import com.musemusic45.data.search.SearchIndex
 import com.musemusic45.data.search.SearchResult
 import com.musemusic45.ui.components.ArtistAvatar
 import com.musemusic45.ui.components.CoverImage
+import com.musemusic45.ui.components.SectionHeader
+import com.musemusic45.ui.theme.AppShapes
 import com.musemusic45.ui.theme.formatArtistSubtitle
 import com.musemusic45.ui.theme.formatDuration
 
@@ -85,7 +87,7 @@ fun SearchScreen(
             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                 imeAction = ImeAction.Search,
             ),
-            shape = RoundedCornerShape(22.dp),
+            shape = RoundedCornerShape(AppShapes.searchBar),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
@@ -139,7 +141,11 @@ private fun SearchResults(
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    CoverImage(albumId = song.albumId, modifier = Modifier.size(40.dp))
+                    CoverImage(
+                        albumId = song.albumId,
+                        modifier = Modifier.size(SEARCH_COVER_SIZE),
+                        shape = RoundedCornerShape(AppShapes.forCoverSize(SEARCH_COVER_SIZE)),
+                    )
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
@@ -162,9 +168,7 @@ private fun SearchResults(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                )
+                // 第八批：去掉逐行分隔线
             }
         }
 
@@ -182,7 +186,11 @@ private fun SearchResults(
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    CoverImage(albumId = album.id, modifier = Modifier.size(40.dp))
+                    CoverImage(
+                        albumId = album.id,
+                        modifier = Modifier.size(SEARCH_COVER_SIZE),
+                        shape = RoundedCornerShape(AppShapes.forCoverSize(SEARCH_COVER_SIZE)),
+                    )
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
@@ -200,9 +208,7 @@ private fun SearchResults(
                         )
                     }
                 }
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                )
+                // 第八批：去掉逐行分隔线
             }
         }
 
@@ -220,7 +226,7 @@ private fun SearchResults(
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    ArtistAvatar(name = artist.name, size = 40.dp)
+                    ArtistAvatar(name = artist.name, size = SEARCH_COVER_SIZE)
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
@@ -238,9 +244,7 @@ private fun SearchResults(
                         )
                     }
                 }
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                )
+                // 第八批：去掉逐行分隔线
             }
         }
 
@@ -248,15 +252,10 @@ private fun SearchResults(
     }
 }
 
-@Composable
-private fun SectionHeader(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-    )
-}
+/**
+ * 搜索页里小封面的尺寸。
+ *
+ * 第八批改成用共用的 [com.musemusic45.ui.components.SectionHeader] 与本文件里
+ * 私有的那份重复实现 —— 私有版本被删掉了，否则改了共用版这里不会有反应。
+ */
+private val SEARCH_COVER_SIZE = 44.dp
