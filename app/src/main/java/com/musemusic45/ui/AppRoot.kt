@@ -24,6 +24,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -108,6 +109,7 @@ import com.musemusic45.ui.albums.AlbumsScreen
 import com.musemusic45.ui.artists.ArtistDetailScreen
 import com.musemusic45.ui.artists.ArtistsScreen
 import com.musemusic45.ui.components.EmptyLibraryScreen
+import com.musemusic45.ui.components.BackGestureIndicator
 import com.musemusic45.ui.components.FloatingNavBar
 import com.musemusic45.ui.components.FloatingNavItem
 import com.musemusic45.ui.components.MiniPlayer
@@ -248,6 +250,10 @@ fun AppRoot(
     var predictiveBackProgress by remember { mutableFloatStateOf(0f) }
     var predictiveBackEdge by remember { mutableIntStateOf(BackEventCompat.EDGE_LEFT) }
 
+    /** 手指位置（窗口坐标），用来把箭头指示器画在手指旁边。 */
+    var predictiveTouchX by remember { mutableFloatStateOf(0f) }
+    var predictiveTouchY by remember { mutableFloatStateOf(0f) }
+
     /**
      * 手势刚完成、动画已经被手势做完了。
      *
@@ -286,6 +292,8 @@ fun AppRoot(
                 progress.collect { event ->
                     predictiveBackProgress = event.progress
                     predictiveBackEdge = event.swipeEdge
+                    predictiveTouchX = event.touchX
+                    predictiveTouchY = event.touchY
                     if (event.progress > 0f) hadProgress = true
                 }
                 predictiveCompleting = hadProgress
@@ -669,7 +677,13 @@ fun AppRoot(
              */
             val previousEntry = navController.previousBackStackEntry
             if (predictiveBackProgress > 0f && previousEntry != null) {
-                Box(modifier = Modifier.fillMaxSize()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        // 必须不透明 —— 各页面本身是透明背景，
+                        // 不铺底色的话两页会"穿透"叠在一起，而不是上下分层
+                        .background(MaterialTheme.colorScheme.background),
+                ) {
                     renderDestination(previousEntry, true)
                 }
             }
@@ -679,6 +693,8 @@ fun AppRoot(
                 startDestination = Routes.SONGS,
                 modifier = Modifier
                     .fillMaxSize()
+                    // 同理：当前页要不透明，缩小后才能"四周留边"露出目的地
+                    .background(MaterialTheme.colorScheme.background)
                     // 预测式返回：当前页跟着手势**缩小并让开**，不透明化。
                     // 方向按滑的是哪一侧镜像。
                     .graphicsLayer {
@@ -757,6 +773,17 @@ fun AppRoot(
                     )
                 }
             }
+        }
+
+        // 预测式返回：跟着手指的圆形箭头指示器。
+        // 放在最外层 Box（不受 Scaffold 内边距影响），因为 touchX/touchY 是窗口坐标。
+        if (predictiveBackProgress > 0f) {
+            BackGestureIndicator(
+                touchX = predictiveTouchX,
+                touchY = predictiveTouchY,
+                // 箭头指着手势前进的方向：从左边缘滑出来是 >，从右边缘滑出来是 <
+                pointsRight = predictiveBackEdge != BackEventCompat.EDGE_RIGHT,
+            )
         }
 
         AnimatedVisibility(
@@ -1068,11 +1095,12 @@ private const val NAV_ANIMATION_MS = 300
 /**
  * 预测式返回的动效参数。
  *
- * 手势进度 p 从 0 到 1，**当前页缩小并往一边让开**，底下的目的地静止不动、
- * 被自然露出来 —— 也就是「把当前这个窗口缩小来预览」，**不做透明化**。
- * 透明化会让两层都变淡、看不清预览的是什么。
+ * 数值是照 Google 的实现量的：手势拉到底时，窗口**等比缩到约 0.90**，
+ * 四周均匀露出底下的目的地；横向只让开一点点用来表示方向。
  *
- * 让开的方向由 `BackEventCompat.swipeEdge` 决定，从哪边滑就往哪边退。
+ * 一开始我把横向位移写成 0.25（270px），太大了 —— Google 那边只有 ~30px。
+ * 真正负责表示方向的其实是跟着手指的箭头指示器（[BackGestureIndicator]），
+ * 位移只需要一点点来配合。
  */
-private const val PREDICTIVE_EXIT_TRANSLATION = 0.25f
-private const val PREDICTIVE_EXIT_SCALE = 0.08f
+private const val PREDICTIVE_EXIT_TRANSLATION = 0.06f
+private const val PREDICTIVE_EXIT_SCALE = 0.10f
