@@ -161,4 +161,183 @@ class LrcParserTest {
         assertEquals(0, doc.indexAt(0))
         assertEquals(0, doc.indexAt(999_999))
     }
+
+    // -------------------------------------- 双语歌词（译文行不带时间戳）
+
+    @Test
+    fun `译文行挂到上一行`() {
+        val lines = parseLrc(
+            """
+            [00:00.00]Original one
+            Translation one
+            [00:05.00]Original two
+            Translation two
+            """.trimIndent(),
+        )
+        assertEquals(2, lines.size)
+        assertEquals("Original one", lines[0].text)
+        assertEquals("Translation one", lines[0].translation)
+        assertEquals("Original two", lines[1].text)
+        assertEquals("Translation two", lines[1].translation)
+    }
+
+    @Test
+    fun `没有译文时 translation 为空`() {
+        val lines = parseLrc("[00:00.00]只有原文")
+        assertEquals(1, lines.size)
+        assertEquals(null, lines[0].translation)
+        assertFalse(lines[0].hasTranslation)
+    }
+
+    @Test
+    fun `开头没有归属的续行被忽略`() {
+        val lines = parseLrc(
+            """
+            孤立的译文
+            [00:00.00]原文
+            """.trimIndent(),
+        )
+        assertEquals(1, lines.size)
+        assertEquals("原文", lines[0].text)
+        assertEquals(null, lines[0].translation)
+    }
+
+    @Test
+    fun `一行多个时间戳时译文挂到每一条上`() {
+        val lines = parseLrc(
+            """
+            [00:01.00][00:09.00]重复句
+            重复句的译文
+            """.trimIndent(),
+        )
+        assertEquals(2, lines.size)
+        assertTrue(lines.all { it.translation == "重复句的译文" })
+    }
+
+    @Test
+    fun `元数据行不会被当成译文`() {
+        val lines = parseLrc(
+            """
+            [00:00.00]原文
+            [ti:标题]
+            """.trimIndent(),
+        )
+        assertEquals(1, lines.size)
+        assertEquals(null, lines[0].translation)
+    }
+
+    @Test
+    fun `元数据之后仍然能挂译文`() {
+        val lines = parseLrc(
+            """
+            [00:00.00]原文
+            [ar:歌手]
+            译文
+            """.trimIndent(),
+        )
+        assertEquals(1, lines.size)
+        assertEquals("译文", lines[0].translation)
+    }
+
+    @Test
+    fun `重复的续行不会覆盖第一条译文`() {
+        val lines = parseLrc(
+            """
+            [00:00.00]原文
+            第一条译文
+            第二条译文
+            """.trimIndent(),
+        )
+        assertEquals(1, lines.size)
+        assertEquals("第一条译文", lines[0].translation)
+    }
+
+    // -------------------------------------------------------- 逐字歌词
+
+    @Test
+    fun `解析逐字时间标签`() {
+        val lines = parseLrc("[00:12.00]<00:12.00>Hello <00:12.50>world")
+        assertEquals(1, lines.size)
+        val line = lines[0]
+        assertEquals("Hello world", line.text)
+        assertTrue(line.hasWords)
+        assertEquals(2, line.words.size)
+        assertEquals(12_000L, line.words[0].timeMs)
+        assertEquals("Hello ", line.words[0].text)
+        assertEquals(12_500L, line.words[1].timeMs)
+        assertEquals("world", line.words[1].text)
+    }
+
+    @Test
+    fun `逐字片段拼起来等于显示文本`() {
+        val line = parseLrc("[00:00.00]<00:00.00>一<00:00.50>二<00:01.00>三").first()
+        assertEquals("一二三", line.text)
+        assertEquals(line.text, line.words.joinToString("") { it.text })
+    }
+
+    @Test
+    fun `没有逐字标签时 words 为空`() {
+        val line = parseLrc("[00:00.00]普通歌词").first()
+        assertFalse(line.hasWords)
+    }
+
+    @Test
+    fun `逐字歌词也能带译文`() {
+        val lines = parseLrc(
+            """
+            [00:10.00]<00:10.00>Hello <00:10.50>world
+            你好世界
+            """.trimIndent(),
+        )
+        assertEquals("Hello world", lines[0].text)
+        assertEquals("你好世界", lines[0].translation)
+        assertEquals(2, lines[0].words.size)
+    }
+
+    @Test
+    fun `逐字时间也受 offset 影响`() {
+        val lines = parseLrc(
+            """
+            [offset:500]
+            [00:10.00]<00:10.00>Hi
+            """.trimIndent(),
+        )
+        assertEquals(9_500L, lines[0].timeMs)
+        assertEquals(9_500L, lines[0].words[0].timeMs)
+    }
+
+    // -------------------------------------------------------- 逐字进度
+
+    @Test
+    fun `没有逐字信息时整行一起亮`() {
+        val line = LrcLine(0, "四个字啊")
+        assertEquals(0, line.sungLength(-1))
+        assertEquals(4, line.sungLength(0))
+    }
+
+    @Test
+    fun `逐字进度按已开始的片段累加并做插值`() {
+        val line = LrcLine(
+            timeMs = 0,
+            text = "abcde",
+            words = listOf(
+                LrcWord(0, "ab"),
+                LrcWord(1_000, "cd"),
+                LrcWord(2_000, "e"),
+            ),
+        )
+        assertEquals(0, line.sungLength(-1))
+        assertEquals(2, line.sungLength(0))
+        assertEquals(3, line.sungLength(500))   // 在 "cd" 里推进了一半
+        assertEquals(4, line.sungLength(1_000))
+        assertEquals(5, line.sungLength(2_000))
+        assertEquals(5, line.sungLength(99_999))
+    }
+
+    @Test
+    fun `逐字进度不会越界`() {
+        val line = LrcLine(0, "ab", words = listOf(LrcWord(0, "ab")))
+        assertEquals(2, line.sungLength(1_000_000))
+        assertEquals(0, line.sungLength(-999))
+    }
 }

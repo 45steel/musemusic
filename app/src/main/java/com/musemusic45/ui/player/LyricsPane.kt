@@ -2,6 +2,7 @@ package com.musemusic45.ui.player
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,15 +18,21 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import com.musemusic45.data.media.LrcLine
 import com.musemusic45.data.media.LyricsState
 
 /**
  * 歌词区。
  *
  * - 带时间轴：逐行滚动，当前行居中高亮，**点任意一行跳到那个时间点**
+ * - 有译文时，译文显示在原文下面一行（双语歌词）
+ * - 有逐字时间轴时，当前行按进度**逐字高亮**
  * - 纯文本：整页静态显示
  * - 没有歌词：显示「暂无歌词」
  *
@@ -115,25 +122,85 @@ private fun SyncedLyrics(
             key = { index -> "$index-${lines[index].timeMs}" },
         ) { index ->
             val line = lines[index]
-            val isCurrent = index == currentIndex
+            LyricLineView(
+                line = line,
+                isCurrent = index == currentIndex,
+                positionMs = positionMs,
+                onClick = { onSeek(line.timeMs) },
+            )
+        }
+    }
+}
+
+/**
+ * 一行歌词：原文在上，译文在下。
+ *
+ * 当前行若带逐字时间轴，则按 [LrcLine.sungLength] 把原文分成"已唱/未唱"两段染色。
+ */
+@Composable
+private fun LyricLineView(
+    line: LrcLine,
+    isCurrent: Boolean,
+    positionMs: Long,
+    onClick: () -> Unit,
+) {
+    val activeColor = MaterialTheme.colorScheme.primary
+    val idleColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val baseStyle = if (isCurrent) {
+        MaterialTheme.typography.titleMedium
+    } else {
+        MaterialTheme.typography.bodyMedium
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (isCurrent && line.hasWords) {
+            val sung = remember(line, positionMs) { line.sungLength(positionMs) }
+            val styled = buildAnnotatedString {
+                withStyle(SpanStyle(color = activeColor)) {
+                    append(line.text.take(sung))
+                }
+                withStyle(SpanStyle(color = idleColor)) {
+                    append(line.text.drop(sung))
+                }
+            }
+            Text(
+                text = styled,
+                style = baseStyle,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+            )
+        } else {
             Text(
                 text = line.text.ifEmpty { " " },
-                style = if (isCurrent) {
-                    MaterialTheme.typography.titleMedium
-                } else {
-                    MaterialTheme.typography.bodyMedium
-                },
+                style = baseStyle,
                 fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                color = if (isCurrent) {
-                    MaterialTheme.colorScheme.primary
+                color = if (isCurrent) activeColor else idleColor,
+                textAlign = TextAlign.Center,
+            )
+        }
+
+        // 译文单独占一行 —— 之前没有这一行，双语歌词会挤在原文里看不出换行
+        if (line.hasTranslation) {
+            Text(
+                text = line.translation.orEmpty(),
+                style = if (isCurrent) {
+                    MaterialTheme.typography.bodyMedium
                 } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
+                    MaterialTheme.typography.bodySmall
+                },
+                color = if (isCurrent) {
+                    activeColor.copy(alpha = 0.8f)
+                } else {
+                    idleColor.copy(alpha = 0.75f)
                 },
                 textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onSeek(line.timeMs) }
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                modifier = Modifier.padding(top = 2.dp),
             )
         }
     }

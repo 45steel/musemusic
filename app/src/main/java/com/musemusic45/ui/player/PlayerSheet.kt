@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -167,11 +168,17 @@ fun PlayerSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 )
             } else {
-                // 封面与歌名整块在剩余空间里垂直居中
+                // 封面与歌名整块在剩余空间里垂直居中。
+                // 整块空白区域都可以点进歌词态（歌名/歌手/专辑自己的点击优先）。
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        .clickable(
+                            enabled = hasLyrics,
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() },
+                        ) { showLyrics = true },
                     contentAlignment = Alignment.Center,
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
