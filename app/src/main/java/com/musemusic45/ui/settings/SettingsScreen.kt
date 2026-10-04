@@ -304,8 +304,9 @@ fun SettingsScreen(
         Column(Modifier.padding(horizontal = 16.dp)) {
             SwitchRow(
                 title = "预测式返回动画",
-                subtitle = "系统返回手势拖动时，当前页跟着手指缩小淡出，松手才真正返回。" +
-                    "需要 Android 13 及以上；关掉就用普通返回。",
+                subtitle = "系统返回手势拖动时，当前页跟着手指缩小让开，露出上一页，" +
+                    "松手才真正返回。从哪边滑就往哪边退。需要 Android 13 及以上；" +
+                    "关掉就用普通的返回过渡。",
                 checked = predictiveBack,
                 onCheckedChange = onTogglePredictiveBack,
             )

@@ -9,11 +9,14 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.PredictiveBackHandler
+import androidx.activity.BackEventCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -63,6 +66,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -235,8 +239,24 @@ fun AppRoot(
      */
     var navTransitioning by remember { mutableStateOf(false) }
 
-    /** 预测式返回的手势进度（0..1）。手没动时是 0。 */
+    /**
+     * 预测式返回：手势进度（0..1）与**从哪一侧滑的**。
+     *
+     * 方向必须跟手：从左边缘往右滑，当前页就该往右让开；
+     * 从右边缘往左滑则镜像。只认一个方向的话，从另一边滑会有"往回缩"的错位感。
+     */
     var predictiveBackProgress by remember { mutableFloatStateOf(0f) }
+    var predictiveBackEdge by remember { mutableIntStateOf(BackEventCompat.EDGE_LEFT) }
+
+    /**
+     * 手势刚完成、动画已经被手势做完了。
+     *
+     * 这时要**跳过一次普通的返回过渡** —— 否则手势把页面送到终点之后，
+     * 普通过渡又从起点重放一遍，看起来会抖一下。
+     * 有它之后，「开 / 关预测式返回」的观感才真正不同：
+     * 开着是手势驱动的缩放，关掉是标准的 300ms 过渡。
+     */
+    var predictiveCompleting by remember { mutableStateOf(false) }
 
     val canPopBack = navController.previousBackStackEntry != null
 
@@ -245,13 +265,18 @@ fun AppRoot(
         navTransitioning = true
         delay(NAV_ANIMATION_MS.toLong())
         navTransitioning = false
+        predictiveCompleting = false
     }
 
-    // 预测式返回：跟手缩放淡出，手势完成才真正返回、取消则弹回
+    // 预测式返回：跟手缩放，手势完成才真正返回、取消则弹回
     if (predictiveBackEnabled && canPopBack) {
         PredictiveBackHandler { progress ->
             try {
-                progress.collect { predictiveBackProgress = it.progress }
+                progress.collect { event ->
+                    predictiveBackProgress = event.progress
+                    predictiveBackEdge = event.swipeEdge
+                }
+                predictiveCompleting = true
                 predictiveBackProgress = 0f
                 navController.popBackStack()
             } catch (cancel: CancellationException) {
@@ -622,26 +647,17 @@ fun AppRoot(
             /**
              * 预测式返回：手势期间把「要去的那一页」画在当前页后面。
              *
+             * 这一层**完全静止** —— 用户要的是「把当前那个窗口缩小来预览」，
+             * 底下的目的地不动，靠当前页缩小让开自然露出来。
+             * 给目的地也加缩放/透明反而会让两层都在动，看着飘。
+             *
              * Navigation Compose 不做这件事（2.8、2.9 里一个 Predictive 类都没有），
              * 它不会在手势期间组合上一个目的地 —— 不自己画的话，当前页缩小后
-             * 露出来的是 Scaffold 底色，一块空白，比不做动画还难看。
+             * 露出来的是 Scaffold 底色，一块空白。
              */
             val previousEntry = navController.previousBackStackEntry
             if (predictiveBackProgress > 0f && previousEntry != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            val p = predictiveBackProgress
-                            translationX = -size.width * PREDICTIVE_ENTER_TRANSLATION * (1f - p)
-                            val s = PREDICTIVE_ENTER_SCALE_START +
-                                (1f - PREDICTIVE_ENTER_SCALE_START) * p
-                            scaleX = s
-                            scaleY = s
-                            alpha = PREDICTIVE_ENTER_ALPHA_START +
-                                (1f - PREDICTIVE_ENTER_ALPHA_START) * p
-                        },
-                ) {
+                Box(modifier = Modifier.fillMaxSize()) {
                     renderDestination(previousEntry, true)
                 }
             }
@@ -651,14 +667,15 @@ fun AppRoot(
                 startDestination = Routes.SONGS,
                 modifier = Modifier
                     .fillMaxSize()
-                    // 预测式返回：当前页跟着手势向右让开、略微缩小
+                    // 预测式返回：当前页跟着手势**缩小并让开**，不透明化。
+                    // 方向按滑的是哪一侧镜像。
                     .graphicsLayer {
                         val p = predictiveBackProgress
-                        translationX = size.width * PREDICTIVE_EXIT_TRANSLATION * p
+                        val dir = if (predictiveBackEdge == BackEventCompat.EDGE_RIGHT) -1f else 1f
+                        translationX = size.width * PREDICTIVE_EXIT_TRANSLATION * p * dir
                         val s = 1f - PREDICTIVE_EXIT_SCALE * p
                         scaleX = s
                         scaleY = s
-                        alpha = 1f - PREDICTIVE_EXIT_FADE * p
                     },
                 // 第十批：把返回动画做回来（第七批为了躲误触压到了 180ms，
                 // 但正确做法是保留动画 + 屏蔽过渡期间的输入，见下面的遮罩层）。
@@ -671,12 +688,21 @@ fun AppRoot(
                         slideOutHorizontally(tween(NAV_ANIMATION_MS)) { -it / 10 }
                 },
                 popEnterTransition = {
-                    fadeIn(tween(NAV_ANIMATION_MS)) +
-                        slideInHorizontally(tween(NAV_ANIMATION_MS)) { -it / 10 }
+                    // 手势已经把这趟动画做完了，就别再重放一遍
+                    if (predictiveCompleting) {
+                        EnterTransition.None
+                    } else {
+                        fadeIn(tween(NAV_ANIMATION_MS)) +
+                            slideInHorizontally(tween(NAV_ANIMATION_MS)) { -it / 10 }
+                    }
                 },
                 popExitTransition = {
-                    fadeOut(tween(NAV_ANIMATION_MS)) +
-                        slideOutHorizontally(tween(NAV_ANIMATION_MS)) { it / 10 }
+                    if (predictiveCompleting) {
+                        ExitTransition.None
+                    } else {
+                        fadeOut(tween(NAV_ANIMATION_MS)) +
+                            slideOutHorizontally(tween(NAV_ANIMATION_MS)) { it / 10 }
+                    }
                 },
             ) {
                 composable(Routes.SONGS) { entry -> renderDestination(entry, false) }
@@ -1020,16 +1046,11 @@ private const val NAV_ANIMATION_MS = 300
 /**
  * 预测式返回的动效参数。
  *
- * 手势进度 p 从 0 到 1：
- *  - **当前页**（要退出的）向右让开、略微缩小、淡一点
- *  - **目的地**（要去的那一页）从左侧跟上来、放大回原尺寸、淡入
+ * 手势进度 p 从 0 到 1，**当前页缩小并往一边让开**，底下的目的地静止不动、
+ * 被自然露出来 —— 也就是「把当前这个窗口缩小来预览」，**不做透明化**。
+ * 透明化会让两层都变淡、看不清预览的是什么。
  *
- * 两层用同一份 p 驱动，所以是严格跟手的；松手取消就一起弹回。
+ * 让开的方向由 `BackEventCompat.swipeEdge` 决定，从哪边滑就往哪边退。
  */
-private const val PREDICTIVE_EXIT_TRANSLATION = 0.22f
-private const val PREDICTIVE_EXIT_SCALE = 0.05f
-private const val PREDICTIVE_EXIT_FADE = 0.35f
-
-private const val PREDICTIVE_ENTER_TRANSLATION = 0.22f
-private const val PREDICTIVE_ENTER_SCALE_START = 0.92f
-private const val PREDICTIVE_ENTER_ALPHA_START = 0.6f
+private const val PREDICTIVE_EXIT_TRANSLATION = 0.25f
+private const val PREDICTIVE_EXIT_SCALE = 0.08f
