@@ -2,6 +2,7 @@ package com.musemusic45.data.repository
 
 import com.musemusic45.data.model.Album
 import com.musemusic45.data.model.Artist
+import com.musemusic45.data.model.ArtistNames
 import com.musemusic45.data.model.Song
 import com.musemusic45.data.model.compareByName
 
@@ -28,16 +29,45 @@ object LibraryAggregator {
                 )
             }
 
-    fun artists(songs: List<Song>): List<Artist> =
-        songs.groupBy { it.artist }
-            .map { (name, group) ->
-                Artist(
-                    name = name,
-                    albumCount = group.map { it.albumId }.distinct().size,
-                    songCount = group.size,
-                    dateAddedSec = group.minOf { it.dateAddedSec },
-                )
-            }
+    /**
+     * 按歌手聚合。
+     *
+     * 第二版起：一首歌如果有多名歌手（`周杰伦、费玉清`），会**分别计入两位歌手**，
+     * 而不是生成一个只此一家的「周杰伦、费玉清」条目。
+     * 歌手名先做归一化（去掉括号内容），所以「某某（xxx）」和「某某」会合并。
+     */
+    fun artists(songs: List<Song>): List<Artist> {
+        val byName = songs.flatMap { song -> song.artistNames.map { name -> name to song } }
+            .groupBy({ it.first }, { it.second })
+        val albumById = albums(songs).associateBy { it.id }
+
+        return byName.map { (name, group) ->
+            val albumIds = group.map { it.albumId }.distinct()
+            val cover = earliestAlbum(albumIds.mapNotNull { albumById[it] })
+            Artist(
+                name = name,
+                albumCount = albumIds.size,
+                songCount = group.size,
+                dateAddedSec = group.minOf { it.dateAddedSec },
+                coverAlbumId = cover?.id ?: 0L,
+                coverYear = cover?.year ?: 0,
+            )
+        }
+    }
+
+    /**
+     * 该歌手**发布年份最早**的专辑，用作头像（第二版新增）。
+     *
+     * 排序键：有年份的按年份升序排在前面，年份未知的垫底；
+     * 再按加入时间、最后按专辑名兜底 —— 只要名下有专辑就一定返回一张，
+     * 不会因为「所有专辑都没年份」而返回 null。
+     */
+    fun earliestAlbum(albums: List<Album>): Album? =
+        albums.minWithOrNull(
+            compareBy<Album> { if (it.year > 0) it.year else Int.MAX_VALUE }
+                .thenBy { it.dateAddedSec }
+                .thenBy { it.name },
+        )
 
     /**
      * 专辑的发布年份：取该专辑内所有有效年份里最早的一个。
@@ -54,12 +84,13 @@ object LibraryAggregator {
      * 仍然不一致就显示「多位歌手」。
      */
     fun albumArtist(songs: List<Song>): String {
-        val tagged = songs.map { it.albumArtist }
+        val tagged = songs.map { ArtistNames.normalize(it.albumArtist) }
             .filter { it.isNotBlank() && it != Song.UNKNOWN_ARTIST }
             .distinct()
         if (tagged.size == 1) return tagged.first()
 
-        val distinct = songs.map { it.artist }.distinct()
+        // 归一化后再比，避免「A（x）」和「A（y）」被当成两位歌手
+        val distinct = songs.map { ArtistNames.normalize(it.artist) }.distinct()
         return when {
             distinct.isEmpty() -> Song.UNKNOWN_ARTIST
             distinct.size == 1 -> distinct.first()

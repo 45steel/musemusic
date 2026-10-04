@@ -50,6 +50,9 @@ class PlaybackController(private val context: Context) {
     /** 专辑 ID → 该专辑的曲目（已按碟号、音轨号排好序）。 */
     private var albumTracks: Map<Long, List<Song>> = emptyMap()
 
+    /** 完整音乐库。从「按专辑播放」切回列表/随机时用它恢复队列。 */
+    private var allSongs: List<Song> = emptyList()
+
     private val planner = AlbumRoundPlanner()
 
     /** 防止 STATE_ENDED 重入导致连跳两张专辑。 */
@@ -92,6 +95,7 @@ class PlaybackController(private val context: Context) {
      * 每次扫描完成后调用。
      */
     fun configureLibrary(songs: List<Song>) {
+        allSongs = songs
         albumTracks = songs
             .groupBy { it.albumId }
             .mapValues { (_, group) -> LibraryAggregator.sortAlbumTracks(group) }
@@ -131,30 +135,64 @@ class PlaybackController(private val context: Context) {
     }
 
     /**
-     * 切换播放方式。**不打断当前播放**。
+     * 切换播放方式。**不打断当前播放** —— 当前歌与播放位置都会保留。
+     *
+     * 第二版修复：第一版切到「按专辑播放」时调用 `startAlbum`，而它的起始位置写死为 0，
+     * 导致当前歌从头重播；从专辑模式切回列表/随机时队列也没换回完整音乐库，
+     * 会变成"单张专辑无限循环"。
      */
     fun setMode(mode: PlayMode) {
         if (mode == currentMode) return
+        val player = controller ?: return
+
         val previousMode = currentMode
-        currentMode = mode
-        Log.i(TAG, "播放方式: $previousMode → $mode")
-
-        if (mode != PlayMode.ALBUM_SHUFFLE) {
-            applyModeToPlayer()
-            syncFromPlayer()
-            return
-        }
-
-        // 进入按专辑播放：当前歌所在专辑成为当前专辑，从该首继续
-        if (planner.roundTotal == 0) {
-            planner.reset(albumTracks.keys.toList())
-        }
         val current = _state.value.currentSong
-        if (current != null) {
-            startAlbum(current.albumId, current.id)
-        } else {
-            val first = planner.nextAlbum()
-            if (first != null) startAlbum(first) else syncFromPlayer()
+        val position = ModeSwitch.resumePosition(player.currentPosition)
+        val wasPlaying = player.isPlaying
+
+        currentMode = mode
+        Log.i(TAG, "播放方式: $previousMode → $mode（保留位置 ${position}ms, 是否在播=$wasPlaying）")
+
+        when {
+            // 切到按专辑播放：当前歌所在专辑成为当前专辑，从原位置继续
+            ModeSwitch.needsAlbumQueue(mode) -> {
+                if (planner.roundTotal == 0) {
+                    planner.reset(albumTracks.keys.toList())
+                }
+                if (current != null) {
+                    startAlbum(
+                        albumId = current.albumId,
+                        startSongId = current.id,
+                        startPositionMs = position,
+                        keepPlaying = wasPlaying,
+                    )
+                } else {
+                    val first = planner.nextAlbum()
+                    if (first != null) {
+                        startAlbum(first, keepPlaying = wasPlaying)
+                    } else {
+                        syncFromPlayer()
+                    }
+                }
+            }
+
+            // 离开按专辑播放：队列换回完整音乐库，否则会围着那一张专辑转
+            ModeSwitch.needsFullQueueRestore(previousMode, mode) &&
+                allSongs.isNotEmpty() && current != null -> {
+                val index = ModeSwitch.indexInFullQueue(allSongs, current.id)
+                queueSongs = allSongs
+                player.setMediaItems(allSongs.map { it.toMediaItem() }, index, position)
+                applyModeToPlayer()
+                player.prepare()
+                if (wasPlaying) player.play()
+                syncFromPlayer()
+                Log.i(TAG, "退出按专辑播放: 队列恢复为全部 ${allSongs.size} 首, 下标 $index")
+            }
+
+            else -> {
+                applyModeToPlayer()
+                syncFromPlayer()
+            }
         }
     }
 
@@ -225,8 +263,19 @@ class PlaybackController(private val context: Context) {
 
     // ------------------------------------------------------------ 内部实现
 
-    /** 把某张专辑装进队列并从指定曲目开始播放。 */
-    private fun startAlbum(albumId: Long, startSongId: Long? = null, fromBeginning: Boolean = false) {
+    /**
+     * 把某张专辑装进队列并从指定曲目开始播放。
+     *
+     * [startPositionMs] 用于切换播放方式时**保留当前播放位置**，不从头重播。
+     * [keepPlaying] 为 false 时只装载不自动播放（切模式时本来就处于暂停状态）。
+     */
+    private fun startAlbum(
+        albumId: Long,
+        startSongId: Long? = null,
+        fromBeginning: Boolean = false,
+        startPositionMs: Long = 0L,
+        keepPlaying: Boolean = true,
+    ) {
         val player = controller ?: return
         val tracks = albumTracks[albumId].orEmpty()
         if (tracks.isEmpty()) {
@@ -243,16 +292,21 @@ class PlaybackController(private val context: Context) {
             tracks.indexOfFirst { it.id == startSongId }.takeIf { it >= 0 } ?: 0
         }
 
-        player.setMediaItems(tracks.map { it.toMediaItem() }, startIndex, 0L)
+        player.setMediaItems(
+            tracks.map { it.toMediaItem() },
+            startIndex,
+            ModeSwitch.resumePosition(startPositionMs),
+        )
         applyModeToPlayer()
         player.prepare()
-        player.play()
+        if (keepPlaying) player.play()
         syncFromPlayer()
 
         Log.i(
             TAG,
             "按专辑播放: 专辑=$albumId 曲目=${tracks.size} 起始=$startIndex " +
-                "本轮第 ${planner.played}/${planner.roundTotal} 张, 剩余 ${planner.remaining} 张",
+                "位置=${startPositionMs}ms 本轮第 ${planner.played}/${planner.roundTotal} 张, " +
+                "剩余 ${planner.remaining} 张",
         )
     }
 

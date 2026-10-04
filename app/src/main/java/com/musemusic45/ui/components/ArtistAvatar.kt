@@ -2,6 +2,7 @@ package com.musemusic45.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
@@ -41,25 +42,57 @@ fun avatarColorIndexFor(name: String): Int {
     return ((name.hashCode() % AVATAR_PALETTE_SIZE) + AVATAR_PALETTE_SIZE) % AVATAR_PALETTE_SIZE
 }
 
-/** 歌手首字圆形色块。没有头像图片时使用。 */
+/**
+ * 歌手头像。
+ *
+ * 第二版起优先用**该歌手发布年份最早的专辑封面**（[albumId]）；
+ * 没有封面、或封面加载不出来时，退回首字圆形色块。
+ */
 @Composable
 fun ArtistAvatar(
     name: String,
     modifier: Modifier = Modifier,
     size: Dp = 44.dp,
+    albumId: Long = 0L,
 ) {
-    val color = remember(name) { AvatarPalette[avatarColorIndexFor(name)] }
     Box(
         modifier = modifier
             .size(size)
-            .clip(CircleShape)
+            .clip(CircleShape),
+    ) {
+        if (albumId > 0L) {
+            CoverImage(
+                albumId = albumId,
+                modifier = Modifier.fillMaxSize(),
+                fallback = { LetterAvatar(name = name, size = size) },
+            )
+        } else {
+            LetterAvatar(name = name, size = size)
+        }
+    }
+}
+
+/** 首字圆形色块。没有专辑封面时使用。 */
+@Composable
+private fun LetterAvatar(name: String, size: Dp) {
+    val color = remember(name) { AvatarPalette[avatarColorIndexFor(name)] }
+    // 头像越大，首字也相应放大，否则 72dp 的头像里会是个小字
+    val style = if (size >= 64.dp) {
+        MaterialTheme.typography.headlineMedium
+    } else {
+        MaterialTheme.typography.titleMedium
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
             .background(color),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = name.take(1).ifEmpty { "?" },
             color = Color.White,
-            style = MaterialTheme.typography.titleMedium,
+            style = style,
         )
     }
 }

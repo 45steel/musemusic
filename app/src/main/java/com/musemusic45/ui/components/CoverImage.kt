@@ -32,9 +32,14 @@ fun CoverImage(
     albumId: Long,
     modifier: Modifier = Modifier,
     shape: RoundedCornerShape = RoundedCornerShape(6.dp),
+    /**
+     * 加载中和失败时的替代内容。传 null 用默认的占位图。
+     * 歌手头像用它退回到首字色块。
+     */
+    fallback: (@Composable () -> Unit)? = null,
 ) {
     if (albumId <= 0L) {
-        CoverPlaceholder(modifier = modifier, shape = shape)
+        if (fallback != null) fallback() else CoverPlaceholder(modifier = modifier, shape = shape)
         return
     }
 
@@ -59,7 +64,13 @@ fun CoverImage(
         contentDescription = null,
         contentScale = ContentScale.Crop,
         modifier = modifier.clip(shape),
-        loading = { CoverPlaceholder(modifier = Modifier.fillMaxSize(), shape = shape) },
-        error = { CoverPlaceholder(modifier = Modifier.fillMaxSize(), shape = shape) },
+        loading = {
+            if (fallback != null) fallback()
+            else CoverPlaceholder(modifier = Modifier.fillMaxSize(), shape = shape)
+        },
+        error = {
+            if (fallback != null) fallback()
+            else CoverPlaceholder(modifier = Modifier.fillMaxSize(), shape = shape)
+        },
     )
 }

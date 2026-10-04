@@ -1,5 +1,6 @@
 package com.musemusic45.ui.artists
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,7 +10,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -19,46 +22,59 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.musemusic45.data.model.Artist
+import com.musemusic45.data.repository.ListSection
 import com.musemusic45.ui.components.ArtistAvatar
+import com.musemusic45.ui.components.SectionHeader
 import com.musemusic45.ui.theme.formatArtistSubtitle
 
 /**
  * 歌手页。顶栏与搜索条由 AppRoot 统一提供。
+ *
+ * 第二版：分段显示 + 段标题吸顶；头像改用该歌手最早年份专辑的封面。
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ArtistsScreen(
-    artists: List<Artist>,
+    sections: List<ListSection<Artist>>,
     onArtistClick: (Artist) -> Unit,
     modifier: Modifier = Modifier,
+    listState: LazyListState = rememberLazyListState(),
 ) {
-    LazyColumn(modifier = modifier.fillMaxSize()) {
-        items(items = artists, key = { it.name }) { artist ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onArtistClick(artist) }
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ArtistAvatar(name = artist.name)
-                Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = artist.name,
-                        style = MaterialTheme.typography.bodyLarge,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = formatArtistSubtitle(artist.albumCount, artist.songCount),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+    LazyColumn(state = listState, modifier = modifier.fillMaxSize()) {
+        sections.forEach { section ->
+            if (section.showHeader) {
+                stickyHeader(key = "header-${section.key}") {
+                    SectionHeader(section.key)
                 }
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+            items(items = section.items, key = { it.name }) { artist ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onArtistClick(artist) }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ArtistAvatar(name = artist.name, albumId = artist.coverAlbumId)
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = artist.name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = formatArtistSubtitle(artist.albumCount, artist.songCount),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+            }
         }
     }
 }

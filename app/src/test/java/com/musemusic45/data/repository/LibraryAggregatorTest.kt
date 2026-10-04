@@ -229,4 +229,157 @@ class LibraryAggregatorTest {
             LibraryAggregator.sortArtistSongs(songs).map { it.title },
         )
     }
+
+    // ------------------------------------ 第二版：多歌手拆分与归一化
+
+    @Test
+    fun `多歌手歌曲分别计入每一位歌手`() {
+        val songs = listOf(
+            testSong(1, artist = "周杰伦、费玉清"),
+            testSong(2, artist = "周杰伦"),
+        )
+        val artists = LibraryAggregator.artists(songs)
+
+        assertEquals(setOf("周杰伦", "费玉清"), artists.map { it.name }.toSet())
+        assertEquals(2, artists.first { it.name == "周杰伦" }.songCount)
+        assertEquals(1, artists.first { it.name == "费玉清" }.songCount)
+    }
+
+    @Test
+    fun `多歌手不会生成合并条目`() {
+        val songs = listOf(testSong(1, artist = "周杰伦、费玉清"))
+        val artists = LibraryAggregator.artists(songs)
+        assertTrue(artists.none { it.name == "周杰伦、费玉清" })
+        assertEquals(2, artists.size)
+    }
+
+    @Test
+    fun `歌手名括号内容被忽略后会合并`() {
+        val songs = listOf(
+            testSong(1, artist = "某某（2019）"),
+            testSong(2, artist = "某某"),
+        )
+        val artists = LibraryAggregator.artists(songs)
+
+        assertEquals(listOf("某某"), artists.map { it.name })
+        assertEquals(2, artists.first().songCount)
+    }
+
+    @Test
+    fun `拆分后的每项都会去括号`() {
+        val songs = listOf(testSong(1, artist = "A（x）、B（y）"))
+        assertEquals(setOf("A", "B"), LibraryAggregator.artists(songs).map { it.name }.toSet())
+    }
+
+    @Test
+    fun `多歌手歌曲的专辑数在每位歌手名下都计入`() {
+        val songs = listOf(
+            testSong(1, artist = "A、B", albumId = 10),
+            testSong(2, artist = "A、B", albumId = 20),
+        )
+        val artists = LibraryAggregator.artists(songs)
+        assertEquals(2, artists.first { it.name == "A" }.albumCount)
+        assertEquals(2, artists.first { it.name == "B" }.albumCount)
+    }
+
+    @Test
+    fun `专辑歌手标签的括号内容被忽略`() {
+        val songs = listOf(
+            testSong(1, artist = "x", albumArtist = "某某（合辑）"),
+            testSong(2, artist = "y", albumArtist = "某某"),
+        )
+        // 两者归一化后都是「某某」，属于同一张专辑的同一歌手
+        assertEquals("某某", LibraryAggregator.albumArtist(songs))
+    }
+
+    @Test
+    fun `专辑歌手只有括号差异时不再算多位歌手`() {
+        val songs = listOf(
+            testSong(1, artist = "区别1", albumArtist = "组合（早期）"),
+            testSong(2, artist = "区别2", albumArtist = "组合（后期）"),
+        )
+        assertEquals("组合", LibraryAggregator.albumArtist(songs))
+    }
+
+    @Test
+    fun `多歌手标签的专辑歌手仍按标签取`() {
+        val songs = listOf(
+            testSong(1, artist = "A、B", albumArtist = "合辑名"),
+            testSong(2, artist = "C", albumArtist = "合辑名"),
+        )
+        assertEquals("合辑名", LibraryAggregator.albumArtist(songs))
+    }
+
+    @Test
+    fun `空歌手名归入未知歌手`() {
+        val songs = listOf(testSong(1, artist = ""))
+        assertEquals(listOf(Song.UNKNOWN_ARTIST), LibraryAggregator.artists(songs).map { it.name })
+    }
+
+    // ------------------------------------ 第二版：歌手头像取最早年份的专辑
+
+    @Test
+    fun `歌手头像取发布年份最早的专辑`() {
+        val songs = listOf(
+            testSong(1, artist = "周杰伦", album = "新专辑", albumId = 20, year = 2016),
+            testSong(2, artist = "周杰伦", album = "老专辑", albumId = 10, year = 2001),
+            testSong(3, artist = "周杰伦", album = "中间", albumId = 30, year = 2008),
+        )
+        val jay = LibraryAggregator.artists(songs).first { it.name == "周杰伦" }
+
+        assertEquals(10L, jay.coverAlbumId)
+        assertEquals(2001, jay.coverYear)
+    }
+
+    @Test
+    fun `有年份的专辑优先于没有年份的`() {
+        val songs = listOf(
+            testSong(1, artist = "A", album = "无年份", albumId = 5, year = 0, dateAddedSec = 100),
+            testSong(2, artist = "A", album = "有年份", albumId = 9, year = 2020, dateAddedSec = 900),
+        )
+        // 无年份那张加入得更早，但它没有年份，应当排在后面
+        assertEquals(9L, LibraryAggregator.artists(songs).first().coverAlbumId)
+    }
+
+    @Test
+    fun `全部专辑都没有年份时按加入时间兜底`() {
+        val songs = listOf(
+            testSong(1, artist = "A", albumId = 7, year = 0, dateAddedSec = 500),
+            testSong(2, artist = "A", albumId = 3, year = 0, dateAddedSec = 100),
+        )
+        val a = LibraryAggregator.artists(songs).first()
+        assertEquals(3L, a.coverAlbumId)
+        assertEquals(0, a.coverYear)
+    }
+
+    @Test
+    fun `多歌手歌曲的两位歌手拿到同一个封面`() {
+        val songs = listOf(
+            testSong(1, artist = "A、B", albumId = 10, year = 2010),
+            testSong(2, artist = "A、B", albumId = 20, year = 2005),
+        )
+        val artists = LibraryAggregator.artists(songs)
+        assertEquals(20L, artists.first { it.name == "A" }.coverAlbumId)
+        assertEquals(20L, artists.first { it.name == "B" }.coverAlbumId)
+    }
+
+    @Test
+    fun `专辑 ID 为零时没有封面可用`() {
+        val songs = listOf(testSong(1, artist = "A", albumId = 0L, year = 2000))
+        assertEquals(0L, LibraryAggregator.artists(songs).first().coverAlbumId)
+    }
+
+    @Test
+    fun `earliestAlbum 对空列表返回 null`() {
+        assertEquals(null, LibraryAggregator.earliestAlbum(emptyList()))
+    }
+
+    @Test
+    fun `earliestAlbum 年份相同时按加入时间再按名字`() {
+        val albums = listOf(
+            com.musemusic45.data.model.Album(2, "B", "x", 2000, 1, 5),
+            com.musemusic45.data.model.Album(1, "A", "x", 2000, 1, 5),
+        )
+        assertEquals(1L, LibraryAggregator.earliestAlbum(albums)?.id)
+    }
 }

@@ -51,8 +51,11 @@ import kotlin.math.roundToInt
 /**
  * 全屏播放页（覆盖层）。
  *
- * M3 阶段已接入真实播放状态（进度、播放暂停、上下首、拖动跳转）。
- * 播放方式面板在 M4、播放列表面板在 M4、歌词在 M9 接入。
+ * 第二版调整：
+ *  - 封面改为在可用区域内**垂直居中**（第一版被上方的 weight 顶到偏上）
+ *  - 去掉「第 N / M 张专辑」轮次行，避免专辑名与上一行重复；
+ *    轮次信息移到了播放列表面板顶部
+ *  - 歌名 / 歌手 / 专辑都可点击跳转
  */
 @Composable
 fun PlayerSheet(
@@ -61,7 +64,6 @@ fun PlayerSheet(
     positionMs: Long,
     durationMs: Long,
     modeLabel: String,
-    roundLabel: String?,
     onCollapse: () -> Unit,
     onTogglePlay: () -> Unit,
     onPrevious: () -> Unit,
@@ -69,6 +71,9 @@ fun PlayerSheet(
     onSeek: (Long) -> Unit,
     onModeClick: () -> Unit,
     onQueueClick: () -> Unit,
+    onTitleClick: () -> Unit,
+    onArtistClick: (String) -> Unit,
+    onAlbumClick: (Long) -> Unit,
     lyricsState: LyricsState,
     modifier: Modifier = Modifier,
 ) {
@@ -162,40 +167,71 @@ fun PlayerSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 )
             } else {
-                Spacer(Modifier.weight(1f))
-
-                CoverImage(
-                    albumId = song?.albumId ?: 0L,
+                // 封面与歌名整块在剩余空间里垂直居中
+                Box(
                     modifier = Modifier
-                        .size(260.dp)
-                        .clickable(enabled = hasLyrics) { showLyrics = true },
-                    shape = RoundedCornerShape(16.dp),
-                )
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CoverImage(
+                            albumId = song?.albumId ?: 0L,
+                            modifier = Modifier
+                                .size(260.dp)
+                                .clickable(enabled = hasLyrics) { showLyrics = true },
+                            shape = RoundedCornerShape(16.dp),
+                        )
 
-                Spacer(Modifier.height(32.dp))
+                        Spacer(Modifier.height(28.dp))
 
-                Text(
-                    text = song?.title ?: "没有正在播放的歌曲",
-                    style = MaterialTheme.typography.headlineSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = song?.let { "${it.artist} · ${it.album}" } ?: "",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (roundLabel != null) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = roundLabel,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 1,
-                    )
+                        Text(
+                            text = song?.title ?: "没有正在播放的歌曲",
+                            style = MaterialTheme.typography.headlineSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.clickable(enabled = song != null) { onTitleClick() },
+                        )
+                        Spacer(Modifier.height(6.dp))
+
+                        if (song != null) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = song.artist,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .weight(1f, fill = false)
+                                        .clickable {
+                                            // 传给上层的是归一化后的歌手名，
+                                            // 否则「周杰伦、费玉清」这种会在歌手页找不到
+                                            onArtistClick(song.artistNames.firstOrNull() ?: song.artist)
+                                        },
+                                )
+                                Text(
+                                    text = " · ",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = song.album,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .weight(2f, fill = false)
+                                        .clickable { onAlbumClick(song.albumId) },
+                                )
+                            }
+                        }
+                    }
                 }
             }
 

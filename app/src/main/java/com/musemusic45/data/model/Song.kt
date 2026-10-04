@@ -29,6 +29,16 @@ data class Song(
      */
     val albumArtist: String = "",
 ) {
+    /**
+     * 归一化并拆分后的歌手名（第二版新增）。
+     *
+     * 「周杰伦、费玉清」→ `[周杰伦, 费玉清]`，「某某（xxx）」→ `[某某]`。
+     * 歌手列表与歌手归属都按这个来，原始 [artist] 仍然用于展示。
+     *
+     * 用 `by lazy` 缓存：`LibraryAggregator.artists` 会对整库每首歌取一次。
+     */
+    val artistNames: List<String> by lazy { ArtistNames.split(artist) }
+
     val hasYear: Boolean get() = year > 0
     val hasTrack: Boolean get() = trackNumber > 0
     val hasDisc: Boolean get() = discNumber > 0

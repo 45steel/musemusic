@@ -45,6 +45,8 @@ fun QueueSheet(
     onSelectIndex: (Int) -> Unit,
     onClear: () -> Unit,
     onDismiss: () -> Unit,
+    /** 按专辑播放时的轮次提示。第二版从播放页移到这里，信息不丢。 */
+    roundLabel: String? = null,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -68,6 +70,15 @@ fun QueueSheet(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    if (roundLabel != null) {
+                        Text(
+                            text = roundLabel,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
                 TextButton(onClick = onClear) { Text("清空") }
             }

@@ -64,7 +64,7 @@ fun ArtistDetailScreen(
         item(key = "artist-header") {
             Column(Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    ArtistAvatar(name = artist.name, size = 72.dp)
+                    ArtistAvatar(name = artist.name, size = 72.dp, albumId = artist.coverAlbumId)
                     Spacer(Modifier.width(16.dp))
                     Column(Modifier.weight(1f)) {
                         Text(

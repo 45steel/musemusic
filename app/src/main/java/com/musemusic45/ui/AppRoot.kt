@@ -24,12 +24,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -53,6 +56,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,6 +83,8 @@ import com.musemusic45.data.model.SortSpec
 import com.musemusic45.data.model.SortTarget
 import com.musemusic45.data.repository.LibraryAggregator
 import com.musemusic45.data.repository.LibrarySorter
+import com.musemusic45.data.repository.ListSections
+import com.musemusic45.data.search.PinyinProvider
 import com.musemusic45.permission.AudioPermissions
 import com.musemusic45.ui.albums.AlbumDetailScreen
 import com.musemusic45.ui.albums.AlbumsScreen
@@ -97,6 +103,7 @@ import com.musemusic45.ui.settings.SettingsScreen
 import com.musemusic45.ui.songs.SongsScreen
 import com.musemusic45.ui.theme.formatRoundLabel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /** 底部导航的三个一级页。 */
 enum class MainTab(
@@ -241,6 +248,104 @@ fun AppRoot(
         LibrarySorter.artists(effectiveArtists, sorts[SortTarget.ARTISTS] ?: SortSpec.DEFAULT)
     }
 
+    // ---------------------------------------------------- 第二版：列表分段
+
+    val songSort = sorts[SortTarget.SONGS] ?: SortSpec.DEFAULT
+    val albumSort = sorts[SortTarget.ALBUMS] ?: SortSpec.DEFAULT
+    val artistSort = sorts[SortTarget.ARTISTS] ?: SortSpec.DEFAULT
+
+    // 拼音转写比较贵，同一个名字只算一次
+    val pinyinProvider = remember { PinyinProvider() }
+    val pinyinCache = remember { HashMap<String, String>() }
+    val pinyinOf: (String) -> String = remember(pinyinProvider) {
+        { text -> pinyinCache.getOrPut(text) { pinyinProvider.toPinyin(text) } }
+    }
+
+    val songSections = remember(sortedSongs, songSort) {
+        ListSections.build(
+            items = sortedSongs,
+            spec = songSort,
+            nameOf = { it.title },
+            yearOf = { it.year },
+            pinyinOf = pinyinOf,
+        )
+    }
+    val albumSections = remember(sortedAlbums, albumSort) {
+        ListSections.build(
+            items = sortedAlbums,
+            spec = albumSort,
+            nameOf = { it.name },
+            yearOf = { it.year },
+            pinyinOf = pinyinOf,
+        )
+    }
+    val artistSections = remember(sortedArtists, artistSort) {
+        ListSections.build(
+            items = sortedArtists,
+            spec = artistSort,
+            nameOf = { it.name },
+            yearOf = { 0 },
+            pinyinOf = pinyinOf,
+        )
+    }
+
+    // 三个列表各自的滚动状态，「定位到正在播放」要用
+    val songsListState = rememberLazyListState()
+    val albumsGridState = rememberLazyGridState()
+    val artistsListState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+
+    /** 把正在播放的内容滚进视野。 */
+    val onLocateNowPlaying: () -> Unit = {
+        val song = playback.currentSong
+        val target = sortTarget
+
+        val itemIndex = when {
+            song == null || target == null -> -1
+            target == SortTarget.SONGS ->
+                ListSections.flatIndexOf(songSections) { it.id == song.id }
+
+            target == SortTarget.ALBUMS ->
+                ListSections.flatIndexOf(albumSections) { it.id == song.albumId }
+
+            else -> {
+                val name = song.artistNames.firstOrNull()
+                ListSections.flatIndexOf(artistSections) { it.name == name }
+            }
+        }
+
+        if (itemIndex < 0) {
+            toast(
+                context,
+                if (song == null) "还没有正在播放的歌曲" else "正在播放的内容不在当前列表里",
+            )
+        } else {
+            scope.launch {
+                when (target) {
+                    SortTarget.SONGS -> songsListState.animateScrollToItem(itemIndex)
+                    SortTarget.ALBUMS -> albumsGridState.animateScrollToItem(itemIndex)
+                    SortTarget.ARTISTS -> artistsListState.animateScrollToItem(itemIndex)
+                    null -> Unit
+                }
+            }
+        }
+    }
+
+    /** 播放页点歌名：切到歌曲页并定位到这首歌。 */
+    val onJumpToCurrentSong: () -> Unit = {
+        val song = playback.currentSong
+        playerExpanded = false
+        navController.navigate(Routes.SONGS) {
+            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+        if (song != null) {
+            val index = ListSections.flatIndexOf(songSections) { it.id == song.id }
+            if (index >= 0) scope.launch { songsListState.animateScrollToItem(index) }
+        }
+    }
+
     val libraryEmpty = library.hasScanned && effectiveSongs.isEmpty()
     val showSearchBar = effectiveSongs.isNotEmpty() && sortTarget != null
 
@@ -253,6 +358,7 @@ fun AppRoot(
                             title = stringResource(tabTitleRes(currentRoute)),
                             sortLabel = currentSort.displayLabel,
                             onSortClick = { sortSheetTarget = sortTarget },
+                            onLocateClick = onLocateNowPlaying,
                             onRescanClick = { libraryViewModel.refresh() },
                             onSettingsClick = { navController.navigate(Routes.SETTINGS) },
                         )
@@ -320,16 +426,21 @@ fun AppRoot(
                         EmptyLibraryScreen(onRescan = { libraryViewModel.refresh() })
                     } else {
                         SongsScreen(
-                            songs = sortedSongs,
+                            sections = songSections,
                             currentSongId = playback.currentSong?.id,
-                            onSongClick = { index -> playerViewModel.playSongs(sortedSongs, index) },
+                            onSongClick = { song ->
+                                val index = sortedSongs.indexOfFirst { it.id == song.id }
+                                playerViewModel.playSongs(sortedSongs, if (index >= 0) index else 0)
+                            },
+                            listState = songsListState,
                         )
                     }
                 }
                 composable(Routes.ALBUMS) {
                     AlbumsScreen(
-                        albums = sortedAlbums,
+                        sections = albumSections,
                         onAlbumClick = { navController.navigate(Routes.albumDetail(it.id)) },
+                        gridState = albumsGridState,
                     )
                 }
                 composable(
@@ -385,8 +496,9 @@ fun AppRoot(
                 }
                 composable(Routes.ARTISTS) {
                     ArtistsScreen(
-                        artists = sortedArtists,
+                        sections = artistSections,
                         onArtistClick = { navController.navigate(Routes.artistDetail(it.name)) },
+                        listState = artistsListState,
                     )
                 }
                 composable(
@@ -402,7 +514,8 @@ fun AppRoot(
                     } else {
                         val artistSongs = remember(artistName, library.songs) {
                             LibraryAggregator.sortArtistSongs(
-                                library.songs.filter { it.artist == artistName },
+                                // 多歌手歌曲会同时归属到每一位歌手名下
+                                library.songs.filter { artistName in it.artistNames },
                             )
                         }
                         val artistAlbums = remember(artistSongs, library.albums) {
@@ -434,7 +547,6 @@ fun AppRoot(
                 positionMs = playback.positionMs,
                 durationMs = playback.durationMs,
                 modeLabel = playback.mode.playerTitle,
-                roundLabel = roundLabelFor(playback.mode, playback.currentSong?.album, playback.albumRoundIndex, playback.albumRoundTotal),
                 onCollapse = { playerExpanded = false },
                 onTogglePlay = { playerViewModel.togglePlayPause() },
                 onPrevious = { playerViewModel.previous() },
@@ -442,6 +554,15 @@ fun AppRoot(
                 onSeek = { playerViewModel.seekTo(it) },
                 onModeClick = { playModeSheetVisible = true },
                 onQueueClick = { queueSheetVisible = true },
+                onTitleClick = onJumpToCurrentSong,
+                onArtistClick = { name ->
+                    playerExpanded = false
+                    navController.navigate(Routes.artistDetail(name))
+                },
+                onAlbumClick = { albumId ->
+                    playerExpanded = false
+                    navController.navigate(Routes.albumDetail(albumId))
+                },
                 lyricsState = lyrics,
             )
         }
@@ -471,6 +592,12 @@ fun AppRoot(
                     queueSheetVisible = false
                 },
                 onDismiss = { queueSheetVisible = false },
+                roundLabel = roundLabelFor(
+                    playback.mode,
+                    playback.currentSong?.album,
+                    playback.albumRoundIndex,
+                    playback.albumRoundTotal,
+                ),
             )
         }
 
@@ -530,6 +657,7 @@ private fun AppTopBar(
     title: String,
     sortLabel: String?,
     onSortClick: () -> Unit,
+    onLocateClick: () -> Unit,
     onRescanClick: () -> Unit,
     onSettingsClick: () -> Unit,
 ) {
@@ -553,6 +681,12 @@ private fun AppTopBar(
         },
         actions = {
             if (sortLabel != null) {
+                IconButton(onClick = onLocateClick) {
+                    Icon(
+                        Icons.Filled.MyLocation,
+                        contentDescription = "定位到正在播放",
+                    )
+                }
                 IconButton(onClick = onSortClick) {
                     Icon(
                         Icons.Filled.SwapVert,
