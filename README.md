@@ -27,7 +27,6 @@
 
 - Media3 `MediaSession` + `DefaultMediaNotificationProvider`
 - 通知栏媒体卡片：上一项 / 暂停 / 下一项、封面、进度
-- 自定义单色通知小图标
 
 ### 歌词
 
