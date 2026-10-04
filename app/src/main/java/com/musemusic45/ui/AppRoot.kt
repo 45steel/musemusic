@@ -3,6 +3,7 @@ package com.musemusic45.ui
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
@@ -89,6 +90,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.musemusic45.BuildConfig
+import com.musemusic45.ProjectInfo
 import com.musemusic45.R
 import com.musemusic45.data.media.FolderPaths
 import com.musemusic45.data.model.PlayMode
@@ -568,6 +570,17 @@ fun AppRoot(
                                 onRemoveArtistSeparator = { libraryViewModel.removeArtistSeparator(it) },
                                 onToggleStopOnTaskRemoved = { libraryViewModel.setStopOnTaskRemoved(it) },
                                 onUnhideAllSongs = { libraryViewModel.unhideAllSongs() },
+                                onOpenRepo = {
+                                    // 用系统浏览器打开仓库页。不引入任何依赖，
+                                    // 也只有用户主动点这一下才会跳出 App。
+                                    val opened = runCatching {
+                                        context.startActivity(
+                                            Intent(Intent.ACTION_VIEW, Uri.parse(ProjectInfo.REPO_URL))
+                                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                        )
+                                    }.isSuccess
+                                    if (!opened) toast(context, "没有找到可以打开网页的应用")
+                                },
                            )
                         }
 

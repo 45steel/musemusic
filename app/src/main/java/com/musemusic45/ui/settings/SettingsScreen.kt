@@ -1,5 +1,6 @@
 package com.musemusic45.ui.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -16,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Refresh
@@ -38,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.musemusic45.ProjectInfo
 import com.musemusic45.data.model.ArtistParsingConfig
 
 /**
@@ -69,6 +72,7 @@ fun SettingsScreen(
     onRemoveArtistSeparator: (Char) -> Unit,
     onToggleStopOnTaskRemoved: (Boolean) -> Unit,
     onUnhideAllSongs: () -> Unit,
+    onOpenRepo: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // 输入框只用于"添加"，添加完就清空，所以不需要跟 DataStore 同步
@@ -340,6 +344,37 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Spacer(Modifier.height(8.dp))
+            // 打开 GitHub 页面。**只有点这里才会跳到浏览器**，
+            // App 自身依旧不联网，用完返回即可。
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpenRepo() }
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Code,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = "在 GitHub 上查看源码",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        text = ProjectInfo.REPO_LABEL,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
         }
 
         Spacer(Modifier.height(32.dp))
