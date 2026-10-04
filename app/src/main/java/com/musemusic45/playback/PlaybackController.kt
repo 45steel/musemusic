@@ -100,8 +100,58 @@ class PlaybackController(private val context: Context) {
             .groupBy { it.albumId }
             .mapValues { (_, group) -> LibraryAggregator.sortAlbumTracks(group) }
         planner.reset(albumTracks.keys.toList())
+        rebuildQueueFromPlayer()
         Log.i(TAG, "按专辑播放已就绪: ${albumTracks.size} 张专辑")
         syncFromPlayer()
+    }
+
+    /**
+     * 播放服务还活着、但这是**新控制器**时，把队列映射重建回来。
+     *
+     * 场景：用户从最近任务里划掉 App，音乐按设置继续播，之后重新打开界面。
+     * 此时服务里的播放器仍然持有整个队列，但 [queueSongs] 是控制器自己的内存字段，
+     * 新的控制器里是空的 —— 不重建的话，迷你播放器上一个字都没有，明明歌还在响。
+     */
+    private fun rebuildQueueFromPlayer() {
+        val player = controller ?: return
+        if (queueSongs.isNotEmpty()) return
+        val count = player.mediaItemCount
+        if (count <= 0) return
+
+        // 播放项的 mediaId 就是歌曲 ID
+        val mediaIds = (0 until count).map { index ->
+            runCatching { player.getMediaItemAt(index).songIdOrNull() }.getOrNull()
+        }
+        val library = allSongs.associateBy { it.id }
+
+        val rebuilt = QueueRebuild.rebuild(mediaIds, library) { index, id ->
+            // 库里找不到（被用户移除、文件被删）：用播放项自带的元数据兜底，
+            // 保证长度和下标都对齐 —— 给出对不上号的队列比空着更糟。
+            val item = runCatching { player.getMediaItemAt(index) }.getOrNull()
+            val meta = item?.mediaMetadata
+            Song(
+                id = id ?: -1L,
+                title = meta?.title?.toString().orEmpty().ifEmpty { "未知歌曲" },
+                artist = meta?.artist?.toString().orEmpty(),
+                album = meta?.albumTitle?.toString().orEmpty(),
+                albumId = 0L,
+                discNumber = 0,
+                trackNumber = 0,
+                year = 0,
+                durationMs = 0L,
+                dateAddedSec = 0L,
+                path = "",
+                mimeType = "",
+                sizeBytes = 0L,
+            )
+        } ?: return
+
+        queueSongs = rebuilt
+        Log.i(
+            TAG,
+            "已按播放器重建队列: ${rebuilt.size} 首, 当前第 ${player.currentMediaItemIndex} 首 " +
+                "「${rebuilt.getOrNull(player.currentMediaItemIndex)?.title}」",
+        )
     }
 
     // ------------------------------------------------------------ 界面操作
