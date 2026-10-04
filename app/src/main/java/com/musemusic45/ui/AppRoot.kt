@@ -251,14 +251,24 @@ fun AppRoot(
     /**
      * 手势刚完成、动画已经被手势做完了。
      *
-     * 这时要**跳过一次普通的返回过渡** —— 否则手势把页面送到终点之后，
-     * 普通过渡又从起点重放一遍，看起来会抖一下。
-     * 有它之后，「开 / 关预测式返回」的观感才真正不同：
-     * 开着是手势驱动的缩放，关掉是标准的 300ms 过渡。
+     * 只有**真的拖过**（progress > 0）才算 —— 按返回键时这个流会立刻结束、
+     * 一个进度事件都没有，那种情况该走普通的返回过渡，不是瞬时切换。
+     *
+     * 有它之后：手势把页面送到终点，就不再让普通过渡从起点重放一遍。
      */
     var predictiveCompleting by remember { mutableStateOf(false) }
 
     val canPopBack = navController.previousBackStackEntry != null
+
+    /**
+     * 返回要不要**直接跳转**（不做任何过渡）。
+     *
+     *  - 关掉预测式返回：是。用户要的就是 Google 那种「关了就没有预览」，
+     *    留一个 300ms 的淡出滑动，本身就像个山寨预览。
+     *  - 手势刚做完动画：也是。手势已经把页面送到底了，再重放一遍会抖。
+     *  - 其余情况（开着预测式返回、按的是返回键）：走正常的 300ms 过渡。
+     */
+    val instantPop = !predictiveBackEnabled || predictiveCompleting
 
     // 每次切换目的地都把过渡标记立起来，动画放完再放下
     LaunchedEffect(backStackEntry?.id) {
@@ -271,12 +281,14 @@ fun AppRoot(
     // 预测式返回：跟手缩放，手势完成才真正返回、取消则弹回
     if (predictiveBackEnabled && canPopBack) {
         PredictiveBackHandler { progress ->
+            var hadProgress = false
             try {
                 progress.collect { event ->
                     predictiveBackProgress = event.progress
                     predictiveBackEdge = event.swipeEdge
+                    if (event.progress > 0f) hadProgress = true
                 }
-                predictiveCompleting = true
+                predictiveCompleting = hadProgress
                 predictiveBackProgress = 0f
                 navController.popBackStack()
             } catch (cancel: CancellationException) {
@@ -688,8 +700,13 @@ fun AppRoot(
                         slideOutHorizontally(tween(NAV_ANIMATION_MS)) { -it / 10 }
                 },
                 popEnterTransition = {
-                    // 手势已经把这趟动画做完了，就别再重放一遍
-                    if (predictiveCompleting) {
+                    // 关掉预测式返回、或手势已经把这趟动画做完 —— 直接跳转
+                    Log.i(
+                        LOG_TAG,
+                        "返回：instantPop=$instantPop" +
+                            "（预测式返回=$predictiveBackEnabled, 手势已完成=$predictiveCompleting）",
+                    )
+                    if (instantPop) {
                         EnterTransition.None
                     } else {
                         fadeIn(tween(NAV_ANIMATION_MS)) +
@@ -697,7 +714,7 @@ fun AppRoot(
                     }
                 },
                 popExitTransition = {
-                    if (predictiveCompleting) {
+                    if (instantPop) {
                         ExitTransition.None
                     } else {
                         fadeOut(tween(NAV_ANIMATION_MS)) +
@@ -1034,6 +1051,11 @@ private fun toast(context: android.content.Context, message: String) {
 
 /** 连按两次退出的时间窗口。 */
 private const val EXIT_WINDOW_MS = 2000L
+
+/**
+ * 日志标签，和播放侧保持一致，方便一起过滤。
+ */
+private const val LOG_TAG = "MuseMusic"
 
 /**
  * 导航过渡时长。
