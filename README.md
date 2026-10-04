@@ -9,6 +9,28 @@
 
 ---
 
+## 📸 界面预览
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/player.jpg" width="220"><br><sub>播放页</sub></td>
+    <td align="center"><img src="docs/screenshots/lyrics-word.jpg" width="220"><br><sub>逐字歌词</sub></td>
+    <td align="center"><img src="docs/screenshots/lyrics.jpg" width="220"><br><sub>歌词（双语分行）</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/songs.jpg" width="220"><br><sub>歌曲列表</sub></td>
+    <td align="center"><img src="docs/screenshots/albums.jpg" width="220"><br><sub>专辑网格</sub></td>
+    <td align="center"><img src="docs/screenshots/artists.jpg" width="220"><br><sub>歌手（罗马音 A-Z）</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/play-mode.jpg" width="220"><br><sub>四种播放方式</sub></td>
+    <td align="center"><img src="docs/screenshots/queue.jpg" width="220"><br><sub>播放列表</sub></td>
+    <td align="center"><img src="docs/screenshots/sort.jpg" width="220"><br><sub>排序方式</sub></td>
+  </tr>
+</table>
+
+---
+
 ## ✨ 功能特性
 
 ### 播放
