@@ -476,18 +476,189 @@ fun AppRoot(
                 }
             },
         ) { innerPadding ->
+            /**
+             * 各个目的地的渲染内容 —— **单一出处**。
+             *
+             * NavHost 的 composable 块和「预测式返回的目的地预览」都调它。
+             * 不抽出来的话，预览里画出来的东西迟早会和真实页面长得不一样。
+             *
+             * @param asPreview 这是手势预览用的副本：不自动聚焦输入框、不产生副作用。
+             *   搜索页在预览里抢焦点的话，手指还没松开输入法就弹出来了。
+             */
+            val renderDestination: @Composable (androidx.navigation.NavBackStackEntry, Boolean) -> Unit =
+                { entry, asPreview ->
+                    when (entry.destination.route) {
+                        Routes.SONGS -> {
+                            if (libraryEmpty) {
+                                EmptyLibraryScreen(onRescan = { libraryViewModel.refresh() })
+                            } else {
+                                SongsScreen(
+                                    sections = songSections,
+                                    currentSongId = playback.currentSong?.id,
+                                    onSongClick = { song ->
+                                        val index = sortedSongs.indexOfFirst { it.id == song.id }
+                                        playerViewModel.playSongs(sortedSongs, if (index >= 0) index else 0)
+                                    },
+                                    listState = songsListState,
+                                    onSongLongClick = { pendingRemove = it },
+                                )
+                            }
+                        }
+
+                        Routes.ALBUMS -> {
+                            AlbumsScreen(
+                                sections = albumSections,
+                                onAlbumClick = { navController.navigate(Routes.albumDetail(it.id)) },
+                                gridState = albumsGridState,
+                            )
+                        }
+
+                        Routes.ALBUM_DETAIL -> {
+                            val albumId = entry.arguments?.getLong(Routes.ARG_ALBUM_ID) ?: -1L
+                            val album = library.albums.firstOrNull { it.id == albumId }
+                            if (album == null) {
+                                // 专辑在重新扫描后消失了，直接退回上一级
+                                if (!asPreview) LaunchedEffect(albumId) { navController.popBackStack() }
+                            } else {
+                                val albumSongs = remember(albumId, library.songs) {
+                                    LibraryAggregator.sortAlbumTracks(
+                                        library.songs.filter { it.albumId == albumId },
+                                    )
+                                }
+                                AlbumDetailScreen(
+                                    album = album,
+                                    songs = albumSongs,
+                                    currentSongId = playback.currentSong?.id,
+                                    onPlayAll = { playerViewModel.playSongs(albumSongs, 0) },
+                                    onSongClick = { index -> playerViewModel.playSongs(albumSongs, index) },
+                                    onSongLongClick = { index -> pendingRemove = albumSongs.getOrNull(index) },
+                                )
+                            }
+                        }
+
+                        Routes.SEARCH -> {
+                            SearchScreen(
+                                index = searchIndex,
+                                onSongClick = { song ->
+                                    val index = sortedSongs.indexOfFirst { it.id == song.id }
+                                    playerViewModel.playSongs(sortedSongs, if (index >= 0) index else 0)
+                                },
+                                onAlbumClick = { navController.navigate(Routes.albumDetail(it.id)) },
+                                onArtistClick = { navController.navigate(Routes.artistDetail(it.name)) },
+                                autoFocus = !asPreview,
+                            )
+                        }
+
+                        Routes.SETTINGS -> {
+                            SettingsScreen(
+                                songCount = effectiveSongs.size,
+                                albumCount = effectiveAlbums.size,
+                                artistCount = effectiveArtists.size,
+                                folders = folders,
+                                onlyFolders = onlyFolders,
+                                isScanning = library.isScanning,
+                                lastScanMillis = library.lastScanMillis,
+                                versionName = BuildConfig.VERSION_NAME,
+                                splitArtists = artistConfig.splitMultiArtist,
+                                ignoreArtistParens = artistConfig.ignoreParentheses,
+                                extraArtistSeparators = artistConfig.extraSeparators,
+                                stopOnTaskRemoved = stopOnTaskRemoved,
+                                hiddenCount = hiddenCount,
+                                predictiveBack = predictiveBackEnabled,
+                                onRescan = { libraryViewModel.refresh() },
+                                onAddFolder = { folderPicker.launch(null) },
+                                onRemoveFolder = { libraryViewModel.removeFolder(it) },
+                                onToggleOnlyFolders = { libraryViewModel.setOnlyFolders(it) },
+                                onToggleSplitArtists = { libraryViewModel.setSplitArtists(it) },
+                                onToggleIgnoreArtistParens = { libraryViewModel.setIgnoreArtistParens(it) },
+                                onAddArtistSeparators = { libraryViewModel.setArtistSeparators(it) },
+                                onRemoveArtistSeparator = { libraryViewModel.removeArtistSeparator(it) },
+                                onToggleStopOnTaskRemoved = { libraryViewModel.setStopOnTaskRemoved(it) },
+                                onUnhideAllSongs = { libraryViewModel.unhideAllSongs() },
+                                onTogglePredictiveBack = { libraryViewModel.setPredictiveBack(it) },
+                            )
+                        }
+
+                        Routes.ARTISTS -> {
+                            ArtistsScreen(
+                                sections = artistSections,
+                                onArtistClick = { navController.navigate(Routes.artistDetail(it.name)) },
+                                listState = artistsListState,
+                            )
+                        }
+
+                        Routes.ARTIST_DETAIL -> {
+                            val artistName = entry.arguments?.getString(Routes.ARG_ARTIST_NAME).orEmpty()
+                            val artist = effectiveArtists.firstOrNull { it.name == artistName }
+                            if (artist == null) {
+                                if (!asPreview) LaunchedEffect(artistName) { navController.popBackStack() }
+                            } else {
+                                val artistSongs = remember(artistName, effectiveSongs, artistConfig) {
+                                    LibraryAggregator.sortArtistSongs(
+                                        // 多歌手歌曲会同时归属到每一位歌手名下（配置里关掉拆分则整串算一位）
+                                        effectiveSongs.filter { artistName in artistConfig.names(it.artist) },
+                                    )
+                                }
+                                val artistAlbums = remember(artistSongs, effectiveAlbums) {
+                                    val albumIds = artistSongs.map { it.albumId }.toSet()
+                                    effectiveAlbums.filter { it.id in albumIds }
+                                }
+                                ArtistDetailScreen(
+                                    artist = artist,
+                                    albums = artistAlbums,
+                                    songs = artistSongs,
+                                    currentSongId = playback.currentSong?.id,
+                                    onAlbumClick = { navController.navigate(Routes.albumDetail(it.id)) },
+                                    onPlayAll = { playerViewModel.playSongs(artistSongs, 0) },
+                                    onSongClick = { index -> playerViewModel.playSongs(artistSongs, index) },
+                                    onSongLongClick = { index -> pendingRemove = artistSongs.getOrNull(index) },
+                                )
+                            }
+                        }
+                    }
+                }
+
             Box(Modifier.padding(innerPadding)) {
+            /**
+             * 预测式返回：手势期间把「要去的那一页」画在当前页后面。
+             *
+             * Navigation Compose 不做这件事（2.8、2.9 里一个 Predictive 类都没有），
+             * 它不会在手势期间组合上一个目的地 —— 不自己画的话，当前页缩小后
+             * 露出来的是 Scaffold 底色，一块空白，比不做动画还难看。
+             */
+            val previousEntry = navController.previousBackStackEntry
+            if (predictiveBackProgress > 0f && previousEntry != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            val p = predictiveBackProgress
+                            translationX = -size.width * PREDICTIVE_ENTER_TRANSLATION * (1f - p)
+                            val s = PREDICTIVE_ENTER_SCALE_START +
+                                (1f - PREDICTIVE_ENTER_SCALE_START) * p
+                            scaleX = s
+                            scaleY = s
+                            alpha = PREDICTIVE_ENTER_ALPHA_START +
+                                (1f - PREDICTIVE_ENTER_ALPHA_START) * p
+                        },
+                ) {
+                    renderDestination(previousEntry, true)
+                }
+            }
+
             NavHost(
                 navController = navController,
                 startDestination = Routes.SONGS,
                 modifier = Modifier
                     .fillMaxSize()
-                    // 预测式返回：手势过程中按进度缩放淡出当前页
+                    // 预测式返回：当前页跟着手势向右让开、略微缩小
                     .graphicsLayer {
                         val p = predictiveBackProgress
-                        scaleX = 1f - PREDICTIVE_BACK_SCALE * p
-                        scaleY = 1f - PREDICTIVE_BACK_SCALE * p
-                        alpha = 1f - PREDICTIVE_BACK_FADE * p
+                        translationX = size.width * PREDICTIVE_EXIT_TRANSLATION * p
+                        val s = 1f - PREDICTIVE_EXIT_SCALE * p
+                        scaleX = s
+                        scaleY = s
+                        alpha = 1f - PREDICTIVE_EXIT_FADE * p
                     },
                 // 第十批：把返回动画做回来（第七批为了躲误触压到了 180ms，
                 // 但正确做法是保留动画 + 屏蔽过渡期间的输入，见下面的遮罩层）。
@@ -508,134 +679,21 @@ fun AppRoot(
                         slideOutHorizontally(tween(NAV_ANIMATION_MS)) { it / 10 }
                 },
             ) {
-                composable(Routes.SONGS) {
-                    if (libraryEmpty) {
-                        EmptyLibraryScreen(onRescan = { libraryViewModel.refresh() })
-                    } else {
-                        SongsScreen(
-                            sections = songSections,
-                            currentSongId = playback.currentSong?.id,
-                            onSongClick = { song ->
-                                val index = sortedSongs.indexOfFirst { it.id == song.id }
-                                playerViewModel.playSongs(sortedSongs, if (index >= 0) index else 0)
-                            },
-                            listState = songsListState,
-                            onSongLongClick = { pendingRemove = it },
-                        )
-                    }
-                }
-                composable(Routes.ALBUMS) {
-                    AlbumsScreen(
-                        sections = albumSections,
-                        onAlbumClick = { navController.navigate(Routes.albumDetail(it.id)) },
-                        gridState = albumsGridState,
-                    )
-                }
+                composable(Routes.SONGS) { entry -> renderDestination(entry, false) }
+                composable(Routes.ALBUMS) { entry -> renderDestination(entry, false) }
                 composable(
                     route = Routes.ALBUM_DETAIL,
                     arguments = listOf(navArgument(Routes.ARG_ALBUM_ID) { type = NavType.LongType }),
-                ) { entry ->
-                    val albumId = entry.arguments?.getLong(Routes.ARG_ALBUM_ID) ?: -1L
-                    val album = library.albums.firstOrNull { it.id == albumId }
-                    if (album == null) {
-                        // 专辑在重新扫描后消失了，直接退回上一级
-                        LaunchedEffect(albumId) { navController.popBackStack() }
-                    } else {
-                        val albumSongs = remember(albumId, library.songs) {
-                            LibraryAggregator.sortAlbumTracks(
-                                library.songs.filter { it.albumId == albumId },
-                            )
-                        }
-                        AlbumDetailScreen(
-                            album = album,
-                            songs = albumSongs,
-                            currentSongId = playback.currentSong?.id,
-                            onPlayAll = { playerViewModel.playSongs(albumSongs, 0) },
-                            onSongClick = { index -> playerViewModel.playSongs(albumSongs, index) },
-                            onSongLongClick = { index -> pendingRemove = albumSongs.getOrNull(index) },
-                        )
-                    }
-                }
-                composable(Routes.SEARCH) {
-                    SearchScreen(
-                        index = searchIndex,
-                        onSongClick = { song ->
-                            val index = sortedSongs.indexOfFirst { it.id == song.id }
-                            playerViewModel.playSongs(sortedSongs, if (index >= 0) index else 0)
-                        },
-                        onAlbumClick = { navController.navigate(Routes.albumDetail(it.id)) },
-                        onArtistClick = { navController.navigate(Routes.artistDetail(it.name)) },
-                    )
-                }
-                composable(Routes.SETTINGS) {
-                        SettingsScreen(
-                        songCount = effectiveSongs.size,
-                        albumCount = effectiveAlbums.size,
-                        artistCount = effectiveArtists.size,
-                        folders = folders,
-                        onlyFolders = onlyFolders,
-                        isScanning = library.isScanning,
-                        lastScanMillis = library.lastScanMillis,
-                        versionName = BuildConfig.VERSION_NAME,
-                        splitArtists = artistConfig.splitMultiArtist,
-                        ignoreArtistParens = artistConfig.ignoreParentheses,
-                        extraArtistSeparators = artistConfig.extraSeparators,
-                        stopOnTaskRemoved = stopOnTaskRemoved,
-                        hiddenCount = hiddenCount,
-                        predictiveBack = predictiveBackEnabled,
-                        onRescan = { libraryViewModel.refresh() },
-                        onAddFolder = { folderPicker.launch(null) },
-                        onRemoveFolder = { libraryViewModel.removeFolder(it) },
-                        onToggleOnlyFolders = { libraryViewModel.setOnlyFolders(it) },
-                        onToggleSplitArtists = { libraryViewModel.setSplitArtists(it) },
-                        onToggleIgnoreArtistParens = { libraryViewModel.setIgnoreArtistParens(it) },
-                        onAddArtistSeparators = { libraryViewModel.setArtistSeparators(it) },
-                        onRemoveArtistSeparator = { libraryViewModel.removeArtistSeparator(it) },
-                        onToggleStopOnTaskRemoved = { libraryViewModel.setStopOnTaskRemoved(it) },
-                        onUnhideAllSongs = { libraryViewModel.unhideAllSongs() },
-                        onTogglePredictiveBack = { libraryViewModel.setPredictiveBack(it) },
-                    )
-                }
-                composable(Routes.ARTISTS) {
-                    ArtistsScreen(
-                        sections = artistSections,
-                        onArtistClick = { navController.navigate(Routes.artistDetail(it.name)) },
-                        listState = artistsListState,
-                    )
-                }
+                ) { entry -> renderDestination(entry, false) }
+                composable(Routes.SEARCH) { entry -> renderDestination(entry, false) }
+                composable(Routes.SETTINGS) { entry -> renderDestination(entry, false) }
+                composable(Routes.ARTISTS) { entry -> renderDestination(entry, false) }
                 composable(
                     route = Routes.ARTIST_DETAIL,
                     arguments = listOf(
                         navArgument(Routes.ARG_ARTIST_NAME) { type = NavType.StringType },
                     ),
-                ) { entry ->
-                    val artistName = entry.arguments?.getString(Routes.ARG_ARTIST_NAME).orEmpty()
-                    val artist = effectiveArtists.firstOrNull { it.name == artistName }
-                    if (artist == null) {
-                        LaunchedEffect(artistName) { navController.popBackStack() }
-                    } else {
-                        val artistSongs = remember(artistName, effectiveSongs, artistConfig) {
-                            LibraryAggregator.sortArtistSongs(
-                                // 多歌手歌曲会同时归属到每一位歌手名下（配置里关掉拆分则整串算一位）
-                                effectiveSongs.filter { artistName in artistConfig.names(it.artist) },
-                            )
-                        }
-                        val artistAlbums = remember(artistSongs, effectiveAlbums) {
-                            val albumIds = artistSongs.map { it.albumId }.toSet()
-                            effectiveAlbums.filter { it.id in albumIds }
-                        }
-                        ArtistDetailScreen(
-                            artist = artist,
-                            albums = artistAlbums,
-                            songs = artistSongs,
-                            currentSongId = playback.currentSong?.id,
-                            onAlbumClick = { navController.navigate(Routes.albumDetail(it.id)) },
-                            onPlayAll = { playerViewModel.playSongs(artistSongs, 0) },
-                            onSongClick = { index -> playerViewModel.playSongs(artistSongs, index) },
-                            onSongLongClick = { index -> pendingRemove = artistSongs.getOrNull(index) },
-                        )
-                    }
-                }
+                ) { entry -> renderDestination(entry, false) }
             }
 
                 // 过渡期间盖一层透明遮罩，把落向旧页面的点击全部吃掉。
@@ -959,8 +1017,19 @@ private const val EXIT_WINDOW_MS = 2000L
  */
 private const val NAV_ANIMATION_MS = 300
 
-/** 预测式返回手势拉到底时，当前页缩小的比例。 */
-private const val PREDICTIVE_BACK_SCALE = 0.08f
+/**
+ * 预测式返回的动效参数。
+ *
+ * 手势进度 p 从 0 到 1：
+ *  - **当前页**（要退出的）向右让开、略微缩小、淡一点
+ *  - **目的地**（要去的那一页）从左侧跟上来、放大回原尺寸、淡入
+ *
+ * 两层用同一份 p 驱动，所以是严格跟手的；松手取消就一起弹回。
+ */
+private const val PREDICTIVE_EXIT_TRANSLATION = 0.22f
+private const val PREDICTIVE_EXIT_SCALE = 0.05f
+private const val PREDICTIVE_EXIT_FADE = 0.35f
 
-/** 预测式返回手势拉到底时，当前页淡出的比例。 */
-private const val PREDICTIVE_BACK_FADE = 0.4f
+private const val PREDICTIVE_ENTER_TRANSLATION = 0.22f
+private const val PREDICTIVE_ENTER_SCALE_START = 0.92f
+private const val PREDICTIVE_ENTER_ALPHA_START = 0.6f

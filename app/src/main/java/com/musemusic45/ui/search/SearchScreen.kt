@@ -58,12 +58,19 @@ fun SearchScreen(
     onAlbumClick: (Album) -> Unit,
     onArtistClick: (Artist) -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * 是否在进入时自动聚焦输入框。
+     *
+     * 预测式返回的**目的地预览**会把它设成 false —— 预览只是画一张图，
+     * 要是那里也抢焦点，手指还没松开输入法就弹出来了。
+     */
+    autoFocus: Boolean = true,
 ) {
     var query by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
-        runCatching { focusRequester.requestFocus() }
+        if (autoFocus) runCatching { focusRequester.requestFocus() }
     }
 
     val result = remember(query, index) {
