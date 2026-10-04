@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -26,17 +27,20 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.musemusic45.data.media.LrcLine
 import com.musemusic45.data.media.LyricsState
+import com.musemusic45.ui.theme.LyricsPalette
 
 /**
- * 歌词区。
+ * 歌词区（沉浸式排版）。
  *
- * - 带时间轴：逐行滚动，当前行居中高亮，**点任意一行跳到那个时间点**
- * - 有译文时，译文显示在原文下面一行（双语歌词）
- * - 有逐字时间轴时，当前行按进度**逐字高亮**
- * - 纯文本：整页静态显示
- * - 没有歌词：显示「暂无歌词」
+ * 设计要求：
+ *  - **背景是纯色**，不跟随歌曲 —— 明确铺一层 `Surface`，杜绝渐变/模糊图片/专辑图当背景
+ *  - **没有卡片容器、没有边框**，歌词直接叠在纯色背景上
+ *  - 当前行放大高亮（高对比度主题色），其余行**同色系的低饱和色**加半透明弱化
+ *  - 文字颜色全部来自莫奈主题色（[LyricsPalette]），背景固定不变
  *
- * 点空白处调用 [onExitLyrics] 回到封面态（歌词行的点击优先，用于跳转）。
+ * 交互：
+ *  - 点任意一行跳到那个时间点
+ *  - 点空白处回到封面态（歌词行的点击优先）
  */
 @Composable
 fun LyricsPane(
@@ -46,38 +50,45 @@ fun LyricsPane(
     onExitLyrics: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .clickable(onClick = onExitLyrics),
+    Surface(
+        color = MaterialTheme.colorScheme.surface,
+        modifier = modifier.fillMaxSize(),
     ) {
-        when (state) {
-            is LyricsState.None -> EmptyLyrics()
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(onClick = onExitLyrics),
+        ) {
+            when (state) {
+                is LyricsState.None -> EmptyLyrics()
 
-            is LyricsState.Plain -> PlainLyrics(state.text)
+                is LyricsState.Plain -> PlainLyrics(state.text)
 
-            is LyricsState.Synced -> SyncedLyrics(
-                state = state,
-                positionMs = positionMs,
-                onSeek = onSeek,
-            )
+                is LyricsState.Synced -> SyncedLyrics(
+                    state = state,
+                    positionMs = positionMs,
+                    onSeek = onSeek,
+                )
+            }
         }
     }
 }
 
 @Composable
 private fun EmptyLyrics() {
+    val background = MaterialTheme.colorScheme.surface
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text(
             text = "暂无歌词",
             style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = LyricsPalette.idleFaded(MaterialTheme.colorScheme.primary, background),
         )
     }
 }
 
 @Composable
 private fun PlainLyrics(text: String) {
+    val background = MaterialTheme.colorScheme.surface
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -88,6 +99,7 @@ private fun PlainLyrics(text: String) {
         Text(
             text = text,
             style = MaterialTheme.typography.bodyLarge,
+            color = LyricsPalette.idle(MaterialTheme.colorScheme.primary, background),
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(vertical = 24.dp),
         )
@@ -136,6 +148,7 @@ private fun SyncedLyrics(
  * 一行歌词：原文在上，译文在下。
  *
  * 当前行若带逐字时间轴，则按 [LrcLine.sungLength] 把原文分成"已唱/未唱"两段染色。
+ * 所有颜色都走 [LyricsPalette]，保证是同色系而不是灰阶。
  */
 @Composable
 private fun LyricLineView(
@@ -144,48 +157,52 @@ private fun LyricLineView(
     positionMs: Long,
     onClick: () -> Unit,
 ) {
-    val activeColor = MaterialTheme.colorScheme.primary
-    val idleColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val baseStyle = if (isCurrent) {
-        MaterialTheme.typography.titleMedium
-    } else {
-        MaterialTheme.typography.bodyMedium
-    }
+    val background = MaterialTheme.colorScheme.surface
+    val primary = MaterialTheme.colorScheme.primary
+
+    val currentColor = LyricsPalette.current(primary)
+    val idleColor = LyricsPalette.idleFaded(primary, background)
+    val unsungColor = LyricsPalette.unsung(primary, background)
+    val translationColor = LyricsPalette.currentTranslation(primary, background)
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 20.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         if (isCurrent && line.hasWords) {
             val sung = remember(line, positionMs) { line.sungLength(positionMs) }
             val styled = buildAnnotatedString {
-                withStyle(SpanStyle(color = activeColor)) {
+                withStyle(SpanStyle(color = currentColor)) {
                     append(line.text.take(sung))
                 }
-                withStyle(SpanStyle(color = idleColor)) {
+                withStyle(SpanStyle(color = unsungColor)) {
                     append(line.text.drop(sung))
                 }
             }
             Text(
                 text = styled,
-                style = baseStyle,
+                style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
             )
         } else {
             Text(
                 text = line.text.ifEmpty { " " },
-                style = baseStyle,
+                style = if (isCurrent) {
+                    MaterialTheme.typography.headlineSmall
+                } else {
+                    MaterialTheme.typography.bodyMedium
+                },
                 fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                color = if (isCurrent) activeColor else idleColor,
+                color = if (isCurrent) currentColor else idleColor,
                 textAlign = TextAlign.Center,
             )
         }
 
-        // 译文单独占一行 —— 之前没有这一行，双语歌词会挤在原文里看不出换行
+        // 译文单独占一行（双语歌词）
         if (line.hasTranslation) {
             Text(
                 text = line.translation.orEmpty(),
@@ -194,13 +211,9 @@ private fun LyricLineView(
                 } else {
                     MaterialTheme.typography.bodySmall
                 },
-                color = if (isCurrent) {
-                    activeColor.copy(alpha = 0.8f)
-                } else {
-                    idleColor.copy(alpha = 0.75f)
-                },
+                color = if (isCurrent) translationColor else idleColor,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 2.dp),
+                modifier = Modifier.padding(top = 3.dp),
             )
         }
     }

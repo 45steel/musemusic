@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -46,17 +48,23 @@ import androidx.compose.ui.unit.dp
 import com.musemusic45.data.media.LyricsState
 import com.musemusic45.data.model.Song
 import com.musemusic45.ui.components.CoverImage
+import com.musemusic45.ui.theme.LyricsPalette
 import com.musemusic45.ui.theme.formatDuration
 import kotlin.math.roundToInt
 
 /**
  * 全屏播放页（覆盖层）。
  *
- * 第二版调整：
- *  - 封面改为在可用区域内**垂直居中**（第一版被上方的 weight 顶到偏上）
- *  - 去掉「第 N / M 张专辑」轮次行，避免专辑名与上一行重复；
- *    轮次信息移到了播放列表面板顶部
- *  - 歌名 / 歌手 / 专辑都可点击跳转
+ * 第七批（界面美化）调整：
+ *  - 莫奈风格：颜色全部来自主题（跟随壁纸），不再写死
+ *  - 封面放进**独立大圆角卡片**，卡片带柔和阴影
+ *  - 进度条与播放控件换成 M3 标准大圆角控件，并收进**底部控制卡片**分层
+ *  - 歌词区保持沉浸式：纯色底、无卡片、无边框（见 [LyricsPane]）
+ *
+ * 交互（保持不变）：
+ *  - 点封面或空白区切到歌词态，歌词态点空白回封面
+ *  - 歌名 / 歌手 / 专辑均可点击跳转
+ *  - 下拉超过阈值收起播放页
  */
 @Composable
 fun PlayerSheet(
@@ -125,24 +133,10 @@ fun PlayerSheet(
             modifier = Modifier
                 .fillMaxSize()
                 .systemBarsPadding()
-                .padding(horizontal = 24.dp),
+                .padding(horizontal = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = onCollapse) {
-                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "收起")
-                }
-                Text(
-                    text = modeLabel,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f),
-                    textAlign = TextAlign.Center,
-                )
-                Spacer(Modifier.size(48.dp))
-            }
+            PlayerTopBar(modeLabel = modeLabel, onCollapse = onCollapse)
 
             if (showLyrics) {
                 LyricsPane(
@@ -154,19 +148,7 @@ fun PlayerSheet(
                         .weight(1f)
                         .fillMaxWidth(),
                 )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = song?.let { "${it.title} — ${it.artist}" } ?: "",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = "点歌词区空白处回到封面",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                )
+                LyricsFooter(song = song)
             } else {
                 // 封面与歌名整块在剩余空间里垂直居中。
                 // 整块空白区域都可以点进歌词态（歌名/歌手/专辑自己的点击优先）。
@@ -181,126 +163,270 @@ fun PlayerSheet(
                         ) { showLyrics = true },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CoverImage(
-                            albumId = song?.albumId ?: 0L,
-                            modifier = Modifier
-                                .size(260.dp)
-                                .clickable(enabled = hasLyrics) { showLyrics = true },
-                            shape = RoundedCornerShape(16.dp),
-                        )
-
-                        Spacer(Modifier.height(28.dp))
-
-                        Text(
-                            text = song?.title ?: "没有正在播放的歌曲",
-                            style = MaterialTheme.typography.headlineSmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.clickable(enabled = song != null) { onTitleClick() },
-                        )
-                        Spacer(Modifier.height(6.dp))
-
-                        if (song != null) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    text = song.artist,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier
-                                        .weight(1f, fill = false)
-                                        .clickable { onArtistClick() },
-                                )
-                                Text(
-                                    text = " · ",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(
-                                    text = song.album,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier
-                                        .weight(2f, fill = false)
-                                        .clickable { onAlbumClick(song.albumId) },
-                                )
-                            }
-                        }
-                    }
+                    CoverAndTitles(
+                        song = song,
+                        hasLyrics = hasLyrics,
+                        onEnterLyrics = { showLyrics = true },
+                        onTitleClick = onTitleClick,
+                        onArtistClick = onArtistClick,
+                        onAlbumClick = onAlbumClick,
+                    )
                 }
             }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(16.dp))
 
-            Slider(
-                value = shownProgress,
-                onValueChange = {
+            PlayerControlsCard(
+                progress = shownProgress,
+                onProgressChange = {
                     dragging = true
                     dragValue = it
                 },
-                onValueChangeFinished = {
+                onProgressChangeFinished = {
                     if (safeDuration > 0L) {
                         onSeek((dragValue * safeDuration).toLong())
                     }
                     dragging = false
                 },
-                enabled = safeDuration > 0L,
+                seekEnabled = safeDuration > 0L,
+                positionLabel = formatDuration(shownPositionMs),
+                durationLabel = formatDuration(safeDuration),
+                isPlaying = isPlaying,
+                onModeClick = onModeClick,
+                onPrevious = onPrevious,
+                onTogglePlay = onTogglePlay,
+                onNext = onNext,
+                onQueueClick = onQueueClick,
+            )
+
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun PlayerTopBar(modeLabel: String, onCollapse: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onCollapse) {
+            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "收起")
+        }
+        Text(
+            text = modeLabel,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.weight(1f),
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.size(48.dp))
+    }
+}
+
+/**
+ * 封面 + 歌名 / 歌手 / 专辑。
+ *
+ * 封面放进一个**独立的大圆角卡片**（[Surface]，28dp 圆角 + 8dp 柔和阴影）。
+ * 封面本身铺满卡片 —— 卡片不再加边框或内衬，避免多余装饰。
+ */
+@Composable
+private fun CoverAndTitles(
+    song: Song?,
+    hasLyrics: Boolean,
+    onEnterLyrics: () -> Unit,
+    onTitleClick: () -> Unit,
+    onArtistClick: () -> Unit,
+    onAlbumClick: (Long) -> Unit,
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Surface(
+            shape = RoundedCornerShape(COVER_CORNER),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            shadowElevation = COVER_SHADOW,
+            modifier = Modifier
+                .size(COVER_SIZE)
+                .clickable(enabled = hasLyrics) { onEnterLyrics() },
+        ) {
+            CoverImage(
+                albumId = song?.albumId ?: 0L,
+                modifier = Modifier.fillMaxSize(),
+                shape = RoundedCornerShape(COVER_CORNER),
+            )
+        }
+
+        Spacer(Modifier.height(28.dp))
+
+        Text(
+            text = song?.title ?: "没有正在播放的歌曲",
+            style = MaterialTheme.typography.headlineSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.clickable(enabled = song != null) { onTitleClick() },
+        )
+        Spacer(Modifier.height(6.dp))
+
+        if (song != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = song.artist,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .clickable { onArtistClick() },
+                )
+                Text(
+                    text = " · ",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = song.album,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(2f, fill = false)
+                        .clickable { onAlbumClick(song.albumId) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 底部控制卡片：进度条 + 时间 + 播放控件。
+ *
+ * 按 M3 卡片分层收在一个大圆角的 tonal 卡片里，和上面的歌词区明确分开。
+ * 播放/暂停用 [FilledIconButton]（M3 标准的高强调圆形控件），
+ * 切歌与播放方式/列表用 [FilledTonalIconButton]（次级强调）。
+ */
+@Composable
+private fun PlayerControlsCard(
+    progress: Float,
+    onProgressChange: (Float) -> Unit,
+    onProgressChangeFinished: () -> Unit,
+    seekEnabled: Boolean,
+    positionLabel: String,
+    durationLabel: String,
+    isPlaying: Boolean,
+    onModeClick: () -> Unit,
+    onPrevious: () -> Unit,
+    onTogglePlay: () -> Unit,
+    onNext: () -> Unit,
+    onQueueClick: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(CONTROL_CARD_CORNER),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        tonalElevation = 1.dp,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Slider(
+                value = progress,
+                onValueChange = onProgressChange,
+                onValueChangeFinished = onProgressChangeFinished,
+                enabled = seekEnabled,
                 modifier = Modifier.fillMaxWidth(),
             )
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(formatDuration(shownPositionMs), style = MaterialTheme.typography.labelSmall)
-                Text(formatDuration(safeDuration), style = MaterialTheme.typography.labelSmall)
+                Text(positionLabel, style = MaterialTheme.typography.labelSmall)
+                Text(durationLabel, style = MaterialTheme.typography.labelSmall)
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(14.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = onModeClick) {
+                FilledTonalIconButton(onClick = onModeClick) {
                     Icon(Icons.Filled.Repeat, contentDescription = "播放方式")
                 }
-                IconButton(onClick = onPrevious) {
+                FilledTonalIconButton(
+                    onClick = onPrevious,
+                    modifier = Modifier.size(SKIP_BUTTON_SIZE),
+                ) {
                     Icon(
                         Icons.Filled.SkipPrevious,
                         contentDescription = "上一首",
-                        modifier = Modifier.size(36.dp),
+                        modifier = Modifier.size(28.dp),
                     )
                 }
-                IconButton(onClick = onTogglePlay) {
+                FilledIconButton(
+                    onClick = onTogglePlay,
+                    modifier = Modifier.size(PLAY_BUTTON_SIZE),
+                ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                         contentDescription = if (isPlaying) "暂停" else "播放",
-                        modifier = Modifier.size(56.dp),
+                        modifier = Modifier.size(34.dp),
                     )
                 }
-                IconButton(onClick = onNext) {
+                FilledTonalIconButton(
+                    onClick = onNext,
+                    modifier = Modifier.size(SKIP_BUTTON_SIZE),
+                ) {
                     Icon(
                         Icons.Filled.SkipNext,
                         contentDescription = "下一首",
-                        modifier = Modifier.size(36.dp),
+                        modifier = Modifier.size(28.dp),
                     )
                 }
-                IconButton(onClick = onQueueClick) {
+                FilledTonalIconButton(onClick = onQueueClick) {
                     Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = "播放列表")
                 }
             }
-
-            Spacer(Modifier.height(24.dp))
         }
+    }
+}
+
+/** 歌词态底部的一行歌名 + 操作提示，用歌词调色板保持同色系。 */
+@Composable
+private fun LyricsFooter(song: Song?) {
+    val background = MaterialTheme.colorScheme.surface
+    val primary = MaterialTheme.colorScheme.primary
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = song?.let { "${it.title} — ${it.artist}" } ?: "",
+            style = MaterialTheme.typography.bodyMedium,
+            color = LyricsPalette.idle(primary, background),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = "点歌词区空白处回到封面",
+            style = MaterialTheme.typography.labelSmall,
+            color = LyricsPalette.idleFaded(primary, background, mix = 0.85f),
+        )
     }
 }
 
 /** 下拉超过这个距离（像素）就收起播放页。 */
 private const val COLLAPSE_THRESHOLD_PX = 220f
+
+/** 封面卡片：大圆角 + 柔和阴影。 */
+private val COVER_CORNER = 28.dp
+private val COVER_SHADOW = 8.dp
+private val COVER_SIZE = 260.dp
+
+/** 底部控制卡片的圆角。 */
+private val CONTROL_CARD_CORNER = 28.dp
+
+/** 播放键（高强调）与切歌键（次级）的尺寸。 */
+private val PLAY_BUTTON_SIZE = 68.dp
+private val SKIP_BUTTON_SIZE = 52.dp
