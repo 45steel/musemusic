@@ -192,6 +192,12 @@ app/src/main/java/com/musemusic45/
 
 ---
 
+##喂喂🐳
+
+https://afdian.com/a/45steel
+
+---
+
 ## ⚠️ 已知限制
 
 - **不联网**：没有在线歌词、没有封面补全、没有云同步，这是刻意的设计
