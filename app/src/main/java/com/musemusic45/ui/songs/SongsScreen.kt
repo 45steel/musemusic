@@ -29,6 +29,7 @@ fun SongsScreen(
     onSongClick: (Song) -> Unit,
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
+    onSongLongClick: ((Song) -> Unit)? = null,
 ) {
     LazyColumn(state = listState, modifier = modifier.fillMaxSize()) {
         sections.forEach { section ->
@@ -42,6 +43,7 @@ fun SongsScreen(
                     song = song,
                     isCurrent = song.id == currentSongId,
                     onClick = { onSongClick(song) },
+                    onLongClick = onSongLongClick?.let { handler -> { handler(song) } },
                 )
                 HorizontalDivider(
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),

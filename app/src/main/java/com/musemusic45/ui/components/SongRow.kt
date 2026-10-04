@@ -1,7 +1,8 @@
 package com.musemusic45.ui.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,13 +24,17 @@ import com.musemusic45.ui.theme.formatDuration
 /**
  * 歌曲列表的一行：小封面 + 歌名 + `歌手 · 专辑` + 时长。
  * 正在播放的那一行整行高亮。
+ *
+ * 长按触发 [onLongClick]（用于把不需要的音频从 App 里移除）。
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SongRow(
     song: Song,
     isCurrent: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val background = if (isCurrent) {
         MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
@@ -40,7 +45,7 @@ fun SongRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .background(background)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,

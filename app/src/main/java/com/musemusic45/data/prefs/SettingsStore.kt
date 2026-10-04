@@ -162,6 +162,41 @@ class SettingsStore(private val context: Context) {
         }
     }
 
+    // ---------------------------------------------------------- 后台行为
+
+    /**
+     * 从最近任务列表划掉 App 后是否停止播放。
+     *
+     * **默认 false（继续播放）** —— 用户划掉界面通常只是想关掉窗口，
+     * 音乐不该跟着断。想让它停的人可以打开这个开关。
+     */
+    val stopOnTaskRemoved: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
+        prefs[KEY_STOP_ON_TASK_REMOVED] ?: false
+    }
+
+    suspend fun setStopOnTaskRemoved(enabled: Boolean) {
+        context.settingsDataStore.edit { it[KEY_STOP_ON_TASK_REMOVED] = enabled }
+    }
+
+    // ------------------------------------------------------ 手动移除的歌曲
+
+    /** 用户手动移除（隐藏）的歌曲 ID。只影响显示与播放队列，不动任何文件。 */
+    val hiddenSongIds: Flow<Set<Long>> = context.settingsDataStore.data.map { prefs ->
+        (prefs[KEY_HIDDEN_SONGS] ?: emptySet())
+            .mapNotNull { it.toLongOrNull() }
+            .toSet()
+    }
+
+    suspend fun hideSong(songId: Long) {
+        context.settingsDataStore.edit { prefs ->
+            prefs[KEY_HIDDEN_SONGS] = (prefs[KEY_HIDDEN_SONGS] ?: emptySet()) + songId.toString()
+        }
+    }
+
+    suspend fun unhideAllSongs() {
+        context.settingsDataStore.edit { it.remove(KEY_HIDDEN_SONGS) }
+    }
+
     // -------------------------------------------------------------- 键
 
     private companion object {
@@ -174,6 +209,9 @@ class SettingsStore(private val context: Context) {
         val KEY_SPLIT_ARTISTS = booleanPreferencesKey("split_artists")
         val KEY_IGNORE_PARENS = booleanPreferencesKey("ignore_artist_parens")
         val KEY_EXTRA_SEPARATORS = stringPreferencesKey("artist_extra_separators")
+
+        val KEY_STOP_ON_TASK_REMOVED = booleanPreferencesKey("stop_on_task_removed")
+        val KEY_HIDDEN_SONGS = stringSetPreferencesKey("hidden_song_ids")
 
         fun sortFieldKey(target: SortTarget) = stringPreferencesKey("sort_field_${target.name}")
 

@@ -1,6 +1,7 @@
 package com.musemusic45.ui
 
 import android.app.Application
+import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.musemusic45.data.media.LyricsReader
@@ -30,6 +31,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     val state: StateFlow<PlaybackUiState> = playback.state
 
+    /** 恢复上次播放只做一次，之后音乐库再变也不重复恢复。 */
+    private var restoreAttempted = false
+
     private val _lyrics = MutableStateFlow<LyricsState>(LyricsState.None)
     val lyrics: StateFlow<LyricsState> = _lyrics.asStateFlow()
 
@@ -52,10 +56,34 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     _lyrics.value = lyricsReader.load(song)
                 }
         }
+        // 记住播放进度，退出后能接着播。
+        // 位置每 500ms 就跳一次，不能每次都写 DataStore（会写爆），
+        // 所以换了歌立刻写、同一首歌最多每 5 秒写一次。
+        viewModelScope.launch {
+            var lastSongId = -1L
+            var lastSavedAt = 0L
+            playback.state.collect { snapshot ->
+                val songId = snapshot.currentSong?.id ?: return@collect
+                val now = SystemClock.elapsedRealtime()
+                if (songId != lastSongId || now - lastSavedAt >= SAVE_INTERVAL_MS) {
+                    lastSongId = songId
+                    lastSavedAt = now
+                    settings.saveLastPlayed(songId, snapshot.positionMs)
+                }
+            }
+        }
     }
 
-    /** 扫描完成后把音乐库交给播放引擎，用于「按专辑播放」。 */
-    fun configureLibrary(songs: List<Song>) = playback.configureLibrary(songs)
+    /** 扫描完成后把音乐库交给播放引擎，用于「按专辑播放」，并尝试恢复上次的播放。 */
+    fun configureLibrary(songs: List<Song>) {
+        playback.configureLibrary(songs)
+        if (restoreAttempted) return
+        restoreAttempted = true
+        viewModelScope.launch {
+            val last = settings.lastPlayed.first() ?: return@launch
+            playback.restoreLastPlayed(last.songId, last.positionMs)
+        }
+    }
 
     fun playSongs(songs: List<Song>, startIndex: Int) = playback.playSongs(songs, startIndex)
 
@@ -78,7 +106,18 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun clearQueue() = playback.clearQueue()
 
     override fun onCleared() {
+        // 退出前再记一次，尽量精确
+        playback.currentSnapshot()?.let { (songId, position) ->
+            runCatching {
+                kotlinx.coroutines.runBlocking { settings.saveLastPlayed(songId, position) }
+            }
+        }
         playback.release()
         super.onCleared()
+    }
+
+    private companion object {
+        /** 同一首歌最多多久写一次播放位置。 */
+        const val SAVE_INTERVAL_MS = 5_000L
     }
 }

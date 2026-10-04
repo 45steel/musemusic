@@ -1,7 +1,9 @@
 package com.musemusic45.ui.artists
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -39,6 +41,7 @@ import com.musemusic45.data.model.Song
 import com.musemusic45.data.repository.LibraryAggregator
 import com.musemusic45.ui.components.ArtistAvatar
 import com.musemusic45.ui.components.CoverImage
+import com.musemusic45.ui.components.ExpandableText
 import com.musemusic45.ui.theme.formatAlbumSubtitle
 import com.musemusic45.ui.theme.formatArtistSubtitle
 import com.musemusic45.ui.theme.formatDuration
@@ -56,6 +59,7 @@ fun ArtistDetailScreen(
     onPlayAll: () -> Unit,
     onSongClick: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    onSongLongClick: ((Int) -> Unit)? = null,
 ) {
     val sortedSongs = remember(songs) { LibraryAggregator.sortArtistSongs(songs) }
     val sortedAlbums = remember(albums) { albums.sortedBy { it.name } }
@@ -67,11 +71,11 @@ fun ArtistDetailScreen(
                     ArtistAvatar(name = artist.name, size = 72.dp, albumId = artist.coverAlbumId)
                     Spacer(Modifier.width(16.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(
+                        // 第七批：歌手名过长时可以展开看全
+                        ExpandableText(
                             text = artist.name,
                             style = MaterialTheme.typography.titleLarge,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
+                            collapsedMaxLines = 2,
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
@@ -124,6 +128,7 @@ fun ArtistDetailScreen(
                 song = song,
                 isCurrent = song.id == currentSongId,
                 onClick = { onSongClick(index) },
+                onLongClick = onSongLongClick?.let { handler -> { handler(index) } },
             )
             HorizontalDivider(
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
@@ -176,16 +181,18 @@ private fun ArtistAlbumCard(album: Album, onClick: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ArtistSongRow(
     song: Song,
     isCurrent: Boolean,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .background(
                 if (isCurrent) {
                     MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)

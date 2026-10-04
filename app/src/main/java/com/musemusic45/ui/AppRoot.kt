@@ -12,6 +12,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.clickable
@@ -39,6 +42,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -50,6 +54,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -79,6 +84,7 @@ import com.musemusic45.BuildConfig
 import com.musemusic45.R
 import com.musemusic45.data.media.FolderPaths
 import com.musemusic45.data.model.PlayMode
+import com.musemusic45.data.model.Song
 import com.musemusic45.data.model.SortSpec
 import com.musemusic45.data.model.SortTarget
 import com.musemusic45.data.repository.LibraryAggregator
@@ -134,6 +140,8 @@ fun AppRoot(
     val folders by libraryViewModel.folders.collectAsStateWithLifecycle()
     val onlyFolders by libraryViewModel.onlyFolders.collectAsStateWithLifecycle()
     val artistConfig by libraryViewModel.artistConfig.collectAsStateWithLifecycle()
+    val stopOnTaskRemoved by libraryViewModel.stopOnTaskRemoved.collectAsStateWithLifecycle()
+    val hiddenCount by libraryViewModel.hiddenCount.collectAsStateWithLifecycle()
 
     var permissionGranted by remember { mutableStateOf(AudioPermissions.hasPermission(context)) }
     var playerExpanded by remember { mutableStateOf(false) }
@@ -141,6 +149,9 @@ fun AppRoot(
     var sortSheetTarget by remember { mutableStateOf<SortTarget?>(null) }
     var playModeSheetVisible by remember { mutableStateOf(false) }
     var queueSheetVisible by remember { mutableStateOf(false) }
+
+    /** 长按要移除的歌曲，非空时弹确认框。 */
+    var pendingRemove by remember { mutableStateOf<Song?>(null) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
@@ -426,6 +437,13 @@ fun AppRoot(
                 navController = navController,
                 startDestination = Routes.SONGS,
                 modifier = Modifier.padding(innerPadding),
+                // 第七批：Navigation Compose 的默认过渡是 700ms，退出动画期间旧页面
+                // 仍然能收到点击（从专辑/歌手详情返回时会误触播放）。压到 180ms，
+                // 误触窗口缩到基本不可能命中。
+                enterTransition = { fadeIn(tween(NAV_ANIMATION_MS)) },
+                exitTransition = { fadeOut(tween(NAV_ANIMATION_MS)) },
+                popEnterTransition = { fadeIn(tween(NAV_ANIMATION_MS)) },
+                popExitTransition = { fadeOut(tween(NAV_ANIMATION_MS)) },
             ) {
                 composable(Routes.SONGS) {
                     if (libraryEmpty) {
@@ -439,6 +457,7 @@ fun AppRoot(
                                 playerViewModel.playSongs(sortedSongs, if (index >= 0) index else 0)
                             },
                             listState = songsListState,
+                            onSongLongClick = { pendingRemove = it },
                         )
                     }
                 }
@@ -470,6 +489,7 @@ fun AppRoot(
                             currentSongId = playback.currentSong?.id,
                             onPlayAll = { playerViewModel.playSongs(albumSongs, 0) },
                             onSongClick = { index -> playerViewModel.playSongs(albumSongs, index) },
+                            onSongLongClick = { index -> pendingRemove = albumSongs.getOrNull(index) },
                         )
                     }
                 }
@@ -485,7 +505,7 @@ fun AppRoot(
                     )
                 }
                 composable(Routes.SETTINGS) {
-                    SettingsScreen(
+                        SettingsScreen(
                         songCount = effectiveSongs.size,
                         albumCount = effectiveAlbums.size,
                         artistCount = effectiveArtists.size,
@@ -497,6 +517,8 @@ fun AppRoot(
                         splitArtists = artistConfig.splitMultiArtist,
                         ignoreArtistParens = artistConfig.ignoreParentheses,
                         extraArtistSeparators = artistConfig.extraSeparators,
+                        stopOnTaskRemoved = stopOnTaskRemoved,
+                        hiddenCount = hiddenCount,
                         onRescan = { libraryViewModel.refresh() },
                         onAddFolder = { folderPicker.launch(null) },
                         onRemoveFolder = { libraryViewModel.removeFolder(it) },
@@ -505,6 +527,8 @@ fun AppRoot(
                         onToggleIgnoreArtistParens = { libraryViewModel.setIgnoreArtistParens(it) },
                         onAddArtistSeparators = { libraryViewModel.setArtistSeparators(it) },
                         onRemoveArtistSeparator = { libraryViewModel.removeArtistSeparator(it) },
+                        onToggleStopOnTaskRemoved = { libraryViewModel.setStopOnTaskRemoved(it) },
+                        onUnhideAllSongs = { libraryViewModel.unhideAllSongs() },
                     )
                 }
                 composable(Routes.ARTISTS) {
@@ -543,6 +567,7 @@ fun AppRoot(
                             onAlbumClick = { navController.navigate(Routes.albumDetail(it.id)) },
                             onPlayAll = { playerViewModel.playSongs(artistSongs, 0) },
                             onSongClick = { index -> playerViewModel.playSongs(artistSongs, index) },
+                            onSongLongClick = { index -> pendingRemove = artistSongs.getOrNull(index) },
                         )
                     }
                 }
@@ -626,6 +651,32 @@ fun AppRoot(
                 onFieldSelected = { libraryViewModel.selectSortField(sheetTarget, it) },
                 onToggleOrder = { libraryViewModel.toggleSortOrder(sheetTarget) },
                 onDismiss = { sortSheetTarget = null },
+            )
+        }
+
+        // 长按歌曲 → 确认后从 App 里移除（不动文件）
+        pendingRemove?.let { song ->
+            AlertDialog(
+                onDismissRequest = { pendingRemove = null },
+                title = { Text("从音乐库移除？") },
+                text = {
+                    Text(
+                        "《${song.title}》将不再显示，也不会进入播放列表、专辑和歌手统计。\n\n" +
+                            "不会删除或修改你的文件，之后可以在「设置」里恢复。",
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            libraryViewModel.hideSong(song.id)
+                            pendingRemove = null
+                            toast(context, "已从音乐库移除")
+                        },
+                    ) { Text("移除") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingRemove = null }) { Text("取消") }
+                },
             )
         }
     }
@@ -815,3 +866,11 @@ private fun toast(context: android.content.Context, message: String) {
 
 /** 连按两次退出的时间窗口。 */
 private const val EXIT_WINDOW_MS = 2000L
+
+/**
+ * 导航过渡时长。
+ *
+ * Navigation Compose 默认 700ms，退出动画期间旧页面仍能收到点击，
+ * 从专辑/歌手详情返回时容易误触播放。压到 180ms 把窗口缩到基本不可能命中。
+ */
+private const val NAV_ANIMATION_MS = 180

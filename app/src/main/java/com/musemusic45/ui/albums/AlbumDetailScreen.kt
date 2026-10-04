@@ -1,7 +1,9 @@
 package com.musemusic45.ui.albums
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -32,6 +34,7 @@ import com.musemusic45.data.model.Album
 import com.musemusic45.data.model.Song
 import com.musemusic45.data.repository.LibraryAggregator
 import com.musemusic45.ui.components.CoverImage
+import com.musemusic45.ui.components.ExpandableText
 import com.musemusic45.ui.theme.formatAlbumSubtitle
 import com.musemusic45.ui.theme.formatDuration
 
@@ -49,6 +52,7 @@ fun AlbumDetailScreen(
     onPlayAll: () -> Unit,
     onSongClick: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    onSongLongClick: ((Int) -> Unit)? = null,
 ) {
     val rows = remember(songs) { buildAlbumRows(songs) }
 
@@ -66,6 +70,7 @@ fun AlbumDetailScreen(
                         song = row.song,
                         isCurrent = row.song.id == currentSongId,
                         onClick = { onSongClick(row.index) },
+                        onLongClick = onSongLongClick?.let { handler -> { handler(row.index) } },
                     )
                     HorizontalDivider(
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
@@ -87,11 +92,11 @@ private fun AlbumHeader(album: Album, onPlayAll: () -> Unit) {
             )
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
-                Text(
+                // 第七批：专辑名过长时可以展开看全
+                ExpandableText(
                     text = album.name,
                     style = MaterialTheme.typography.titleLarge,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+                    collapsedMaxLines = 2,
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
@@ -135,16 +140,18 @@ private fun DiscHeaderText(disc: Int) {
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TrackRow(
     song: Song,
     isCurrent: Boolean,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .background(
                 if (isCurrent) {
                     MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)

@@ -59,6 +59,13 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val _artistConfig = MutableStateFlow(ArtistParsingConfig())
     val artistConfig: StateFlow<ArtistParsingConfig> = _artistConfig.asStateFlow()
 
+    /** 从最近任务列表划掉 App 后是否停止播放（默认 false = 继续播）。 */
+    private val _stopOnTaskRemoved = MutableStateFlow(false)
+    val stopOnTaskRemoved: StateFlow<Boolean> = _stopOnTaskRemoved.asStateFlow()
+
+    /** 当前库里被手动移除的歌曲数。 */
+    val hiddenCount: StateFlow<Int> = repository.hiddenCount
+
     init {
         // 恢复上次的排序偏好
         viewModelScope.launch {
@@ -69,6 +76,19 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
         viewModelScope.launch { settings.folders.collect { _folders.value = it } }
         viewModelScope.launch { settings.onlyFolders.collect { _onlyFolders.value = it } }
+        viewModelScope.launch {
+            settings.stopOnTaskRemoved.collect { _stopOnTaskRemoved.value = it }
+        }
+
+        // 手动移除的集合一变，立刻重新聚合（不重新扫描媒体库）并重建搜索索引。
+        // 首次拿到的值也要走一遍：库里可能有上次会话移除过的歌。
+        viewModelScope.launch {
+            settings.hiddenSongIds.collect { ids ->
+                if (repository.setHiddenSongs(ids)) {
+                    rebuildSearchIndex()
+                }
+            }
+        }
 
         // 歌手配置一改，立刻按新规则重新归类（不重新扫描媒体库），并重建搜索索引
         viewModelScope.launch {
@@ -186,6 +206,24 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun removeArtistSeparator(separator: Char) {
         viewModelScope.launch { settings.removeArtistSeparator(separator) }
+    }
+
+    // -------------------------------------------------------- 手动移除歌曲
+
+    /** 把一首歌从 App 里移除（**只影响显示与播放队列，不删文件**）。 */
+    fun hideSong(songId: Long) {
+        viewModelScope.launch { settings.hideSong(songId) }
+    }
+
+    /** 恢复全部被移除的歌曲。 */
+    fun unhideAllSongs() {
+        viewModelScope.launch { settings.unhideAllSongs() }
+    }
+
+    // ------------------------------------------------------------ 后台行为
+
+    fun setStopOnTaskRemoved(enabled: Boolean) {
+        viewModelScope.launch { settings.setStopOnTaskRemoved(enabled) }
     }
 
     companion object {

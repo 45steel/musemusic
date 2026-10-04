@@ -107,6 +107,50 @@ class PlaybackController(private val context: Context) {
     // ------------------------------------------------------------ 界面操作
 
     /**
+     * 恢复上次退出时的播放信息：把队列装回去、停在那首歌的那个位置。
+     *
+     * **不自动开始播放** —— 只把播放器摆回原位，用户按播放键才响。
+     * 播放服务还活着（队列非空）时直接返回 false，绝不打断正在进行的播放。
+     *
+     * @return 是否真的恢复了
+     */
+    fun restoreLastPlayed(songId: Long, positionMs: Long): Boolean {
+        val player = controller ?: return false
+        if (player.mediaItemCount > 0) return false
+
+        val plan = RestorePlan.plan(
+            mode = currentMode,
+            songId = songId,
+            positionMs = positionMs,
+            allSongs = allSongs,
+            albumTracks = { albumTracks[it].orEmpty() },
+        ) ?: return false
+
+        if (currentMode == PlayMode.ALBUM_SHUFFLE) {
+            planner.setCurrentAlbum(plan.songs[plan.index].albumId)
+        }
+        queueSongs = plan.songs
+        player.setMediaItems(plan.songs.map { it.toMediaItem() }, plan.index, plan.positionMs)
+        applyModeToPlayer()
+        player.prepare()
+        syncFromPlayer()
+
+        Log.i(
+            TAG,
+            "恢复上次播放: ${plan.songs[plan.index].title} 位置=${plan.positionMs}ms " +
+                "队列=${plan.songs.size} 下标=${plan.index}",
+        )
+        return true
+    }
+
+    /** 当前这首歌的 ID 与播放位置，用于退出前记录。 */
+    fun currentSnapshot(): Pair<Long, Long>? {
+        val player = controller ?: return null
+        val song = queueSongs.getOrNull(player.currentMediaItemIndex) ?: return null
+        return song.id to player.currentPosition.coerceAtLeast(0L)
+    }
+
+    /**
      * 用给定列表作为队列，从 [startIndex] 开始播放。
      *
      * 注意「按专辑播放」下的特殊规则：手动点歌时，那首歌**所在专辑**成为当前专辑，

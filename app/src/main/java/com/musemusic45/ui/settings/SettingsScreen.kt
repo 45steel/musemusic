@@ -41,7 +41,7 @@ import androidx.compose.ui.unit.dp
 import com.musemusic45.data.model.ArtistParsingConfig
 
 /**
- * 设置页：重新扫描、文件夹管理、统计信息、关于。
+ * 设置页：重新扫描、文件夹管理、歌手归类、后台行为、手动移除、关于。
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -57,6 +57,8 @@ fun SettingsScreen(
     splitArtists: Boolean,
     ignoreArtistParens: Boolean,
     extraArtistSeparators: String,
+    stopOnTaskRemoved: Boolean,
+    hiddenCount: Int,
     onRescan: () -> Unit,
     onAddFolder: () -> Unit,
     onRemoveFolder: (String) -> Unit,
@@ -65,6 +67,8 @@ fun SettingsScreen(
     onToggleIgnoreArtistParens: (Boolean) -> Unit,
     onAddArtistSeparators: (String) -> Unit,
     onRemoveArtistSeparator: (Char) -> Unit,
+    onToggleStopOnTaskRemoved: (Boolean) -> Unit,
+    onUnhideAllSongs: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // 输入框只用于"添加"，添加完就清空，所以不需要跟 DataStore 同步
@@ -275,6 +279,53 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary,
             )
+        }
+
+        Spacer(Modifier.height(16.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+
+        SectionTitle("后台播放")
+        Column(Modifier.padding(horizontal = 16.dp)) {
+            SwitchRow(
+                title = "划掉最近任务后停止播放",
+                subtitle = "默认关闭：从最近任务列表划掉 App 后音乐继续播放。" +
+                    "打开后划掉就会停止播放并结束后台服务。",
+                checked = stopOnTaskRemoved,
+                onCheckedChange = onToggleStopOnTaskRemoved,
+            )
+        }
+
+        Spacer(Modifier.height(16.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+
+        SectionTitle("手动移除的歌曲")
+        Column(Modifier.padding(horizontal = 16.dp)) {
+            Text(
+                text = "长按任意一首歌可以把它从 App 里移除，用来挡掉扫描到的不需要的音频。" +
+                    "移除只影响显示和播放列表，不会删除或修改文件。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(10.dp))
+            if (hiddenCount > 0) {
+                Text(
+                    text = "已移除 $hiddenCount 首歌",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = onUnhideAllSongs,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("全部恢复")
+                }
+            } else {
+                Text(
+                    text = "还没有移除任何歌曲",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         Spacer(Modifier.height(16.dp))
