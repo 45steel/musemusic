@@ -23,7 +23,7 @@ data class ListSection<T>(
  * | 发布年份 | 年份 | `2020 年`、`未知年份` |
  * | 添加时间 | **不分段** | 空 |
  *
- * 拼音通过 [pinyinOf] 注入，这样这个文件不依赖 Android，可以直接单元测试。
+ * 拼音通过 [romanizeOf] 注入，这样这个文件不依赖 Android，可以直接单元测试。
  */
 object ListSections {
 
@@ -41,7 +41,7 @@ object ListSections {
      *  - 首字符是汉字等非 ASCII 字符 → 用拼音的首字母
      *  - 首字符是数字、符号等 → 归入 `#`
      */
-    fun initialKey(name: String, pinyinOf: (String) -> String): String {
+    fun initialKey(name: String, romanizeOf: (String) -> String): String {
         val trimmed = name.trim()
         val first = trimmed.firstOrNull() ?: return FALLBACK_KEY
 
@@ -49,7 +49,7 @@ object ListSections {
         if (first in 'a'..'z') return first.uppercaseChar().toString()
         if (first.code < 128) return FALLBACK_KEY
 
-        val pinyin = pinyinOf(trimmed)
+        val pinyin = romanizeOf(trimmed)
         val letter = pinyin.firstOrNull { it in 'a'..'z' || it in 'A'..'Z' }
             ?: return FALLBACK_KEY
         return letter.uppercaseChar().toString()
@@ -80,12 +80,12 @@ object ListSections {
         spec: SortSpec,
         nameOf: (T) -> String,
         yearOf: (T) -> Int,
-        pinyinOf: (String) -> String,
+        romanizeOf: (String) -> String,
     ): List<ListSection<T>> {
         if (items.isEmpty()) return emptyList()
 
         return when (spec.field) {
-            SortField.NAME -> group(items) { initialKey(nameOf(it), pinyinOf) }
+            SortField.NAME -> group(items) { initialKey(nameOf(it), romanizeOf) }
 
             SortField.YEAR -> group(items) {
                 val year = yearOf(it)

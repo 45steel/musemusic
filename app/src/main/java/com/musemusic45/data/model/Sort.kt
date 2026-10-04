@@ -73,14 +73,19 @@ data class SortSpec(
 }
 
 /**
- * 中文按拼音排序的比较器。
+ * 系统中文排序器。
  *
- * `Collator.getInstance(Locale.CHINA)` 走的是 CLDR 的中文排序规则，
- * 也就是拼音顺序（阿 → 张），而不是 Unicode 码位顺序。
+ * 第三批起**不再是主排序路径**（它跨平台不一致，而且假名按五十音排），
+ * 只在 Android 10 以下没有 ICU 转写器时由 [NameSortKey.installCollator] 兜底使用。
  */
 val ChineseCollator: Collator = Collator.getInstance(Locale.CHINA).apply {
     strength = Collator.PRIMARY
 }
 
-/** 按中文拼音比较两个字符串。 */
-fun compareByName(a: String, b: String): Int = ChineseCollator.compare(a, b)
+/**
+ * 按名称比较两个字符串。
+ *
+ * 第三批起改用 [NameSortKey]（自己算罗马化排序键）：汉字按拼音、假名按罗马音、
+ * 数字排在字母之前，且**跨平台结果一致**。
+ */
+fun compareByName(a: String, b: String): Int = NameSortKey.compare(a, b)

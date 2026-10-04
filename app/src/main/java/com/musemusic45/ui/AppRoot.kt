@@ -254,11 +254,12 @@ fun AppRoot(
     val albumSort = sorts[SortTarget.ALBUMS] ?: SortSpec.DEFAULT
     val artistSort = sorts[SortTarget.ARTISTS] ?: SortSpec.DEFAULT
 
-    // 拼音转写比较贵，同一个名字只算一次
+    // 罗马化（汉字→拼音、假名→罗马字）比较贵，同一个名字只算一次。
+    // 分段键和排序键用的是同一套规则，保证「A 段里的名字都以 a 开头」。
     val pinyinProvider = remember { PinyinProvider() }
-    val pinyinCache = remember { HashMap<String, String>() }
-    val pinyinOf: (String) -> String = remember(pinyinProvider) {
-        { text -> pinyinCache.getOrPut(text) { pinyinProvider.toPinyin(text) } }
+    val romanizeCache = remember { HashMap<String, String>() }
+    val romanizeOf: (String) -> String = remember(pinyinProvider) {
+        { text -> romanizeCache.getOrPut(text) { pinyinProvider.toLatin(text) } }
     }
 
     val songSections = remember(sortedSongs, songSort) {
@@ -267,7 +268,7 @@ fun AppRoot(
             spec = songSort,
             nameOf = { it.title },
             yearOf = { it.year },
-            pinyinOf = pinyinOf,
+            romanizeOf = romanizeOf,
         )
     }
     val albumSections = remember(sortedAlbums, albumSort) {
@@ -276,7 +277,7 @@ fun AppRoot(
             spec = albumSort,
             nameOf = { it.name },
             yearOf = { it.year },
-            pinyinOf = pinyinOf,
+            romanizeOf = romanizeOf,
         )
     }
     val artistSections = remember(sortedArtists, artistSort) {
@@ -285,7 +286,7 @@ fun AppRoot(
             spec = artistSort,
             nameOf = { it.name },
             yearOf = { 0 },
-            pinyinOf = pinyinOf,
+            romanizeOf = romanizeOf,
         )
     }
 

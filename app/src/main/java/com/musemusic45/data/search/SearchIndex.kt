@@ -14,22 +14,44 @@ import com.musemusic45.data.model.Song
  */
 class PinyinProvider {
 
-    private val transliterator: Transliterator? =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            runCatching { Transliterator.getInstance("Han-Latin") }.getOrNull()
-        } else {
-            null
-        }
+    private val hanLatin = createTransliterator("Han-Latin")
+    private val anyLatin = createTransliterator("Any-Latin")
+    private val latinAscii = createTransliterator("Latin-ASCII")
 
-    val available: Boolean get() = transliterator != null
+    val available: Boolean get() = hanLatin != null
 
     /** 转成拼音；不支持时原样返回。 */
-    fun toPinyin(text: String): String =
-        transliterator?.let { runCatching { it.transliterate(text) }.getOrDefault(text) } ?: text
+    fun toPinyin(text: String): String = applyTo(hanLatin, text)
 
     /** 直接取拼音首字母。 */
     fun initialsOf(text: String): String = initialsFromPinyin(toPinyin(text))
+
+    /**
+     * 统一罗马化（第三批新增）。
+     *
+     * 汉字 → 拼音，片假名/平假名 → 罗马字，最后去掉声调符号：
+     * 「周杰伦」→ `zhou jie lun`、「カタカナ」→ `katakana`、「さくら」→ `sakura`。
+     *
+     * 先跑 Han-Latin 是为了让汉字拿到**汉语**读音（`Any-Latin` 对纯汉字串的
+     * 处理不保证是拼音），再跑 `Any-Latin` 覆盖假名等其余文字，最后 `Latin-ASCII` 去声调。
+     */
+    fun toLatin(text: String): String {
+        var result = applyTo(hanLatin, text)
+        result = applyTo(anyLatin, result)
+        return applyTo(latinAscii, result)
+    }
+
+    private fun applyTo(transliterator: Transliterator?, text: String): String =
+        transliterator?.let { runCatching { it.transliterate(text) }.getOrDefault(text) } ?: text
 }
+
+/** ICU 转写器只在 Android 10（API 29）及以上可用，更低版本返回 null 并降级。 */
+private fun createTransliterator(id: String): Transliterator? =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        runCatching { Transliterator.getInstance(id) }.getOrNull()
+    } else {
+        null
+    }
 
 /**
  * 搜索索引。

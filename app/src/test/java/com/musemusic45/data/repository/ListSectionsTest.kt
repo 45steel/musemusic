@@ -99,7 +99,7 @@ class ListSectionsTest {
             spec = spec(SortField.NAME),
             nameOf = { it },
             yearOf = { 0 },
-            pinyinOf = fakePinyin,
+            romanizeOf = fakePinyin,
         )
         assertEquals(listOf("A", "Z"), sections.map { it.key })
     }
@@ -112,7 +112,7 @@ class ListSectionsTest {
             spec = spec(SortField.YEAR),
             nameOf = { it.toString() },
             yearOf = { it },
-            pinyinOf = fakePinyin,
+            romanizeOf = fakePinyin,
         )
         assertEquals(listOf("2001 年", "2020 年", ListSections.UNKNOWN_YEAR_KEY), sections.map { it.key })
     }
@@ -125,7 +125,7 @@ class ListSectionsTest {
             spec = spec(SortField.DATE_ADDED),
             nameOf = { it.toString() },
             yearOf = { 0 },
-            pinyinOf = fakePinyin,
+            romanizeOf = fakePinyin,
         )
         assertEquals(1, sections.size)
         assertEquals(listOf(1, 2, 3), sections.first().items)
@@ -140,7 +140,7 @@ class ListSectionsTest {
             spec = spec(SortField.NAME),
             nameOf = { it },
             yearOf = { 0 },
-            pinyinOf = fakePinyin,
+            romanizeOf = fakePinyin,
         )
         assertEquals(listOf("Z", "B", "A"), sections.map { it.key })
     }
@@ -153,7 +153,7 @@ class ListSectionsTest {
             spec = spec(SortField.NAME),
             nameOf = { it },
             yearOf = { 0 },
-            pinyinOf = fakePinyin,
+            romanizeOf = fakePinyin,
         )
         assertEquals(items, sections.flatMap { it.items })
     }
@@ -165,7 +165,7 @@ class ListSectionsTest {
             spec = spec(SortField.NAME),
             nameOf = { it },
             yearOf = { 0 },
-            pinyinOf = fakePinyin,
+            romanizeOf = fakePinyin,
         )
         assertTrue(sections.isEmpty())
     }

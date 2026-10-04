@@ -173,13 +173,22 @@ private fun TrackRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (isCurrent) {
-                Text(
-                    text = "正在播放",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
+            // 第三批：专辑详情页也要显示歌手（合辑里每首歌的歌手都不同）
+            Text(
+                text = if (isCurrent) {
+                    "正在播放 · ${song.artist}"
+                } else {
+                    song.artist
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isCurrent) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
         Spacer(Modifier.width(8.dp))
         Text(

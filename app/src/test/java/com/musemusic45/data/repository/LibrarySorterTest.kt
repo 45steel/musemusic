@@ -1,15 +1,33 @@
 package com.musemusic45.data.repository
 
+import com.musemusic45.data.model.NameSortKey
 import com.musemusic45.data.model.SortField
 import com.musemusic45.data.model.SortOrder
 import com.musemusic45.data.model.SortSpec
 import com.musemusic45.data.model.defaultOrderFor
 import com.musemusic45.data.model.testSong
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
 class LibrarySorterTest {
+
+    /**
+     * 单元测试跑在 JVM 上，没有 Android 的 ICU 转写器，
+     * 所以这里注入一张确定的拼音表 —— 测试验的是"排序用了罗马化键"这件事本身，
+     * 具体拼音怎么算由 `PinyinProvider` 负责（在设备上验证）。
+     */
+    @Before
+    fun installFakeRomanizer() {
+        NameSortKey.install { text -> PINYIN[text] ?: text }
+    }
+
+    @After
+    fun restoreIdentity() {
+        NameSortKey.installIdentity()
+    }
 
     // ------------------------------------------------------------ 中文拼音
 
@@ -212,5 +230,26 @@ class LibrarySorterTest {
         assertTrue(SortSpec.ARTIST_FIELDS.none { it == SortField.YEAR })
         assertEquals(3, SortSpec.SONG_FIELDS.size)
         assertTrue(SortSpec.SONG_FIELDS.contains(SortField.YEAR))
+    }
+
+    private companion object {
+        /** 测试里用到的名字 → 拼音。 */
+        val PINYIN = mapOf(
+            "阿" to "a",
+            "阿婆" to "apo",
+            "白天" to "baitian",
+            "张灯结彩" to "zhangdengjiecai",
+            "唱游" to "changyou",
+            "范特西" to "fantexi",
+            "无年份专辑" to "wunianfenzhuanji",
+            "王菲" to "wangfei",
+            "周杰伦" to "zhoujielun",
+            // 添加时间/年份用到的短名，排不到名次但要能算出键
+            "旧" to "jiu", "新" to "xin", "中" to "zhong",
+            "无年份" to "wunianfen", "有年份" to "younianfen",
+            "老歌" to "laoge", "新歌" to "xinge",
+            "甲" to "jia", "乙" to "yi", "丙" to "bing",
+            "有名字" to "youmingzi",
+        )
     }
 }
