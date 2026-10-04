@@ -63,10 +63,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val _stopOnTaskRemoved = MutableStateFlow(false)
     val stopOnTaskRemoved: StateFlow<Boolean> = _stopOnTaskRemoved.asStateFlow()
 
-    /** 是否启用预测式返回（默认 true）。 */
-    private val _predictiveBack = MutableStateFlow(true)
-    val predictiveBack: StateFlow<Boolean> = _predictiveBack.asStateFlow()
-
     /** 当前库里被手动移除的歌曲数。 */
     val hiddenCount: StateFlow<Int> = repository.hiddenCount
 
@@ -82,9 +78,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch { settings.onlyFolders.collect { _onlyFolders.value = it } }
         viewModelScope.launch {
             settings.stopOnTaskRemoved.collect { _stopOnTaskRemoved.value = it }
-        }
-        viewModelScope.launch {
-            settings.predictiveBack.collect { _predictiveBack.value = it }
         }
 
         // 手动移除的集合一变，立刻重新聚合（不重新扫描媒体库）并重建搜索索引。
@@ -231,10 +224,6 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun setStopOnTaskRemoved(enabled: Boolean) {
         viewModelScope.launch { settings.setStopOnTaskRemoved(enabled) }
-    }
-
-    fun setPredictiveBack(enabled: Boolean) {
-        viewModelScope.launch { settings.setPredictiveBack(enabled) }
     }
 
     companion object {

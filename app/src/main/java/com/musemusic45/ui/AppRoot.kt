@@ -8,15 +8,11 @@ import android.os.Build
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.PredictiveBackHandler
-import androidx.activity.BackEventCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -34,8 +30,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -159,7 +153,6 @@ fun AppRoot(
     val onlyFolders by libraryViewModel.onlyFolders.collectAsStateWithLifecycle()
     val artistConfig by libraryViewModel.artistConfig.collectAsStateWithLifecycle()
     val stopOnTaskRemoved by libraryViewModel.stopOnTaskRemoved.collectAsStateWithLifecycle()
-    val predictiveBackEnabled by libraryViewModel.predictiveBack.collectAsStateWithLifecycle()
     val hiddenCount by libraryViewModel.hiddenCount.collectAsStateWithLifecycle()
 
     var permissionGranted by remember { mutableStateOf(AudioPermissions.hasPermission(context)) }
@@ -242,63 +235,13 @@ fun AppRoot(
      */
     var navTransitioning by remember { mutableStateOf(false) }
 
-    /**
-     * 预测式返回：手势进度（0..1）与**从哪一侧滑的**。
-     *
-     * 方向必须跟手：从左边缘往右滑，当前页就该往右让开；
-     * 从右边缘往左滑则镜像。只认一个方向的话，从另一边滑会有"往回缩"的错位感。
-     */
-    var predictiveBackProgress by remember { mutableFloatStateOf(0f) }
-    var predictiveBackEdge by remember { mutableIntStateOf(BackEventCompat.EDGE_LEFT) }
-
-    /**
-     * 手势刚完成、动画已经被手势做完了。
-     *
-     * 只有**真的拖过**（progress > 0）才算 —— 按返回键时这个流会立刻结束、
-     * 一个进度事件都没有，那种情况该走普通的返回过渡，不是瞬时切换。
-     *
-     * 有它之后：手势把页面送到终点，就不再让普通过渡从起点重放一遍。
-     */
-    var predictiveCompleting by remember { mutableStateOf(false) }
-
-    val canPopBack = navController.previousBackStackEntry != null
-
-    /**
-     * 返回要不要**直接跳转**（不做任何过渡）。
-     *
-     *  - 关掉预测式返回：是。用户要的就是 Google 那种「关了就没有预览」，
-     *    留一个 300ms 的淡出滑动，本身就像个山寨预览。
-     *  - 手势刚做完动画：也是。手势已经把页面送到底了，再重放一遍会抖。
-     *  - 其余情况（开着预测式返回、按的是返回键）：走正常的 300ms 过渡。
-     */
-    val instantPop = !predictiveBackEnabled || predictiveCompleting
-
-    // 每次切换目的地都把过渡标记立起来，动画放完再放下
+    // 每次切换目的地都把过渡标记立起来，动画放完再放下。
+    // 过渡期间旧页面仍能收到点击（从详情返回时快速点一下会误触播放），
+    // 所以这段时间盖一层遮罩把输入吃掉。
     LaunchedEffect(backStackEntry?.id) {
         navTransitioning = true
         delay(NAV_ANIMATION_MS.toLong())
         navTransitioning = false
-        predictiveCompleting = false
-    }
-
-    // 预测式返回：跟手缩放，手势完成才真正返回、取消则弹回
-    if (predictiveBackEnabled && canPopBack) {
-        PredictiveBackHandler { progress ->
-            var hadProgress = false
-            try {
-                progress.collect { event ->
-                    predictiveBackProgress = event.progress
-                    predictiveBackEdge = event.swipeEdge
-                    if (event.progress > 0f) hadProgress = true
-                }
-                predictiveCompleting = hadProgress
-                predictiveBackProgress = 0f
-                navController.popBackStack()
-            } catch (cancel: CancellationException) {
-                predictiveBackProgress = 0f
-                throw cancel
-            }
-        }
     }
 
     BackHandler(enabled = playerExpanded) { playerExpanded = false }
@@ -529,23 +472,11 @@ fun AppRoot(
              * NavHost 的 composable 块和「预测式返回的目的地预览」都调它。
              * 不抽出来的话，预览里画出来的东西迟早会和真实页面长得不一样。
              *
-             * @param asPreview 这是手势预览用的副本：不自动聚焦输入框、不产生副作用。
-             *   搜索页在预览里抢焦点的话，手指还没松开输入法就弹出来了。
              */
-            val renderDestination: @Composable (androidx.navigation.NavBackStackEntry, Boolean) -> Unit =
-                { entry, asPreview ->
-                    // 预览层必须用**独立的**列表状态。
-                    // Compose 的 LazyListState / LazyGridState 不支持被两个列表同时使用，
-                    // 共用一个的话预览层根本渲染不出内容 —— 表现就是"预览里什么都没有"。
-                    val previewSongsState = remember { LazyListState() }
-                    val previewAlbumsState = remember { LazyGridState() }
-                    val previewArtistsState = remember { LazyListState() }
-                    val songsState = if (asPreview) previewSongsState else songsListState
-                    val albumsState = if (asPreview) previewAlbumsState else albumsGridState
-                    val artistsState = if (asPreview) previewArtistsState else artistsListState
-
-                    // 页面自己要有不透明底色。否则缩小时会看到两页"叠"在一起，
-                    // 而不是干净的上下分层（各页面的内容本来是透明背景的）。
+            val renderDestination: @Composable (androidx.navigation.NavBackStackEntry) -> Unit =
+                { entry ->
+                    // 页面自己要有不透明底色。各页面的内容本来是透明背景，
+                    // 不铺底的话过渡期间两页会互相"透"出来，看着糊。
                     Surface(
                         modifier = Modifier.fillMaxSize(),
                         color = MaterialTheme.colorScheme.background,
@@ -562,7 +493,7 @@ fun AppRoot(
                                         val index = sortedSongs.indexOfFirst { it.id == song.id }
                                         playerViewModel.playSongs(sortedSongs, if (index >= 0) index else 0)
                                     },
-                                    listState = songsState,
+                                    listState = songsListState,
                                     onSongLongClick = { pendingRemove = it },
                                 )
                             }
@@ -572,7 +503,7 @@ fun AppRoot(
                             AlbumsScreen(
                                 sections = albumSections,
                                 onAlbumClick = { navController.navigate(Routes.albumDetail(it.id)) },
-                                gridState = albumsState,
+                                gridState = albumsGridState,
                             )
                         }
 
@@ -581,7 +512,7 @@ fun AppRoot(
                             val album = library.albums.firstOrNull { it.id == albumId }
                             if (album == null) {
                                 // 专辑在重新扫描后消失了，直接退回上一级
-                                if (!asPreview) LaunchedEffect(albumId) { navController.popBackStack() }
+                                LaunchedEffect(albumId) { navController.popBackStack() }
                             } else {
                                 val albumSongs = remember(albumId, library.songs) {
                                     LibraryAggregator.sortAlbumTracks(
@@ -608,7 +539,7 @@ fun AppRoot(
                                 },
                                 onAlbumClick = { navController.navigate(Routes.albumDetail(it.id)) },
                                 onArtistClick = { navController.navigate(Routes.artistDetail(it.name)) },
-                                autoFocus = !asPreview,
+                                autoFocus = true,
                             )
                         }
 
@@ -627,8 +558,7 @@ fun AppRoot(
                                 extraArtistSeparators = artistConfig.extraSeparators,
                                 stopOnTaskRemoved = stopOnTaskRemoved,
                                 hiddenCount = hiddenCount,
-                                predictiveBack = predictiveBackEnabled,
-                                onRescan = { libraryViewModel.refresh() },
+                               onRescan = { libraryViewModel.refresh() },
                                 onAddFolder = { folderPicker.launch(null) },
                                 onRemoveFolder = { libraryViewModel.removeFolder(it) },
                                 onToggleOnlyFolders = { libraryViewModel.setOnlyFolders(it) },
@@ -638,15 +568,14 @@ fun AppRoot(
                                 onRemoveArtistSeparator = { libraryViewModel.removeArtistSeparator(it) },
                                 onToggleStopOnTaskRemoved = { libraryViewModel.setStopOnTaskRemoved(it) },
                                 onUnhideAllSongs = { libraryViewModel.unhideAllSongs() },
-                                onTogglePredictiveBack = { libraryViewModel.setPredictiveBack(it) },
-                            )
+                           )
                         }
 
                         Routes.ARTISTS -> {
                             ArtistsScreen(
                                 sections = artistSections,
                                 onArtistClick = { navController.navigate(Routes.artistDetail(it.name)) },
-                                listState = artistsState,
+                                listState = artistsListState,
                             )
                         }
 
@@ -654,7 +583,7 @@ fun AppRoot(
                             val artistName = entry.arguments?.getString(Routes.ARG_ARTIST_NAME).orEmpty()
                             val artist = effectiveArtists.firstOrNull { it.name == artistName }
                             if (artist == null) {
-                                if (!asPreview) LaunchedEffect(artistName) { navController.popBackStack() }
+                                LaunchedEffect(artistName) { navController.popBackStack() }
                             } else {
                                 val artistSongs = remember(artistName, effectiveSongs, artistConfig) {
                                     LibraryAggregator.sortArtistSongs(
@@ -682,65 +611,20 @@ fun AppRoot(
                     }
                 }
 
-    val predictivePreviousEntry = navController.previousBackStackEntry
-
     Box(Modifier.fillMaxSize()) {
-        /**
-         * 预测式返回：目的地层，**完全静止，不参与缩放**。
-         *
-         * 用户要的是「把当前那个窗口缩小来预览」—— 动的只该是当前这一层。
-         * 这一层连顶栏底栏一起画全，缩起来四周露出的才是完整的一页。
-         */
-        if (predictiveBackProgress > 0f && predictivePreviousEntry != null) {
-            Column(Modifier.fillMaxSize()) {
-                renderTopBar(predictivePreviousEntry)
-                Box(Modifier.weight(1f)) {
-                    renderDestination(predictivePreviousEntry, true)
-                }
-                renderBottomBar()
-            }
-        }
-
-        /**
-         * 当前「窗口」：顶栏 + 内容 + 底栏**整体一起缩放**（照 Google 的做法）。
-         * 只缩内容区的话顶栏不跟着动，和参考图对不上。
-         */
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    val p = predictiveBackProgress
-                    // 从左边缘滑：窗口跟着往右走；从右边缘滑：镜像。
-                    val dir = if (predictiveBackEdge == BackEventCompat.EDGE_LEFT) 1f else -1f
-                    translationX = size.width * PREDICTIVE_EXIT_TRANSLATION * p * dir
-                    val s = 1f - PREDICTIVE_EXIT_SCALE * p
-                    scaleX = s
-                    scaleY = s
-                },
-        ) {
-            Scaffold(
-                topBar = { renderTopBar(backStackEntry) },
-                bottomBar = renderBottomBar,
-            ) { innerPadding ->
+        Scaffold(
+            topBar = { renderTopBar(backStackEntry) },
+            bottomBar = renderBottomBar,
+        ) { innerPadding ->
             Box(Modifier.padding(innerPadding)) {
-
             NavHost(
                 navController = navController,
                 startDestination = Routes.SONGS,
                 modifier = Modifier
                     .fillMaxSize()
-                    // 同理：当前页要不透明，缩小后才能"四周留边"露出目的地
-                    .background(MaterialTheme.colorScheme.background)
-                    // 预测式返回：当前页跟着手势**缩小并让开**，不透明化。
-                    // 方向按滑的是哪一侧镜像。
-                    .graphicsLayer {
-                        val p = predictiveBackProgress
-                        val dir = if (predictiveBackEdge == BackEventCompat.EDGE_RIGHT) -1f else 1f
-                        translationX = size.width * PREDICTIVE_EXIT_TRANSLATION * p * dir
-                        val s = 1f - PREDICTIVE_EXIT_SCALE * p
-                        scaleX = s
-                        scaleY = s
-                    },
+                    // 每页自带不透明底色：各页面本身是透明背景，
+                    // 不铺底的话过渡期间两页会互相"透"出来，看着糊。
+                    .background(MaterialTheme.colorScheme.background),
                 // 第十批：把返回动画做回来（第七批为了躲误触压到了 180ms，
                 // 但正确做法是保留动画 + 屏蔽过渡期间的输入，见下面的遮罩层）。
                 enterTransition = {
@@ -752,43 +636,29 @@ fun AppRoot(
                         slideOutHorizontally(tween(NAV_ANIMATION_MS)) { -it / 10 }
                 },
                 popEnterTransition = {
-                    // 关掉预测式返回、或手势已经把这趟动画做完 —— 直接跳转
-                    Log.i(
-                        LOG_TAG,
-                        "返回：instantPop=$instantPop" +
-                            "（预测式返回=$predictiveBackEnabled, 手势已完成=$predictiveCompleting）",
-                    )
-                    if (instantPop) {
-                        EnterTransition.None
-                    } else {
-                        fadeIn(tween(NAV_ANIMATION_MS)) +
-                            slideInHorizontally(tween(NAV_ANIMATION_MS)) { -it / 10 }
-                    }
+                    fadeIn(tween(NAV_ANIMATION_MS)) +
+                        slideInHorizontally(tween(NAV_ANIMATION_MS)) { -it / 10 }
                 },
                 popExitTransition = {
-                    if (instantPop) {
-                        ExitTransition.None
-                    } else {
-                        fadeOut(tween(NAV_ANIMATION_MS)) +
-                            slideOutHorizontally(tween(NAV_ANIMATION_MS)) { it / 10 }
-                    }
+                    fadeOut(tween(NAV_ANIMATION_MS)) +
+                        slideOutHorizontally(tween(NAV_ANIMATION_MS)) { it / 10 }
                 },
             ) {
-                composable(Routes.SONGS) { entry -> renderDestination(entry, false) }
-                composable(Routes.ALBUMS) { entry -> renderDestination(entry, false) }
+                composable(Routes.SONGS) { entry -> renderDestination(entry) }
+                composable(Routes.ALBUMS) { entry -> renderDestination(entry) }
                 composable(
                     route = Routes.ALBUM_DETAIL,
                     arguments = listOf(navArgument(Routes.ARG_ALBUM_ID) { type = NavType.LongType }),
-                ) { entry -> renderDestination(entry, false) }
-                composable(Routes.SEARCH) { entry -> renderDestination(entry, false) }
-                composable(Routes.SETTINGS) { entry -> renderDestination(entry, false) }
-                composable(Routes.ARTISTS) { entry -> renderDestination(entry, false) }
+                ) { entry -> renderDestination(entry) }
+                composable(Routes.SEARCH) { entry -> renderDestination(entry) }
+                composable(Routes.SETTINGS) { entry -> renderDestination(entry) }
+                composable(Routes.ARTISTS) { entry -> renderDestination(entry) }
                 composable(
                     route = Routes.ARTIST_DETAIL,
                     arguments = listOf(
                         navArgument(Routes.ARG_ARTIST_NAME) { type = NavType.StringType },
                     ),
-                ) { entry -> renderDestination(entry, false) }
+                ) { entry -> renderDestination(entry) }
             }
 
                 // 过渡期间盖一层透明遮罩，把落向旧页面的点击全部吃掉。
@@ -809,7 +679,6 @@ fun AppRoot(
                     )
                 }
             }
-        }
         }
 
         AnimatedVisibility(
@@ -1105,10 +974,6 @@ private fun toast(context: android.content.Context, message: String) {
 /** 连按两次退出的时间窗口。 */
 private const val EXIT_WINDOW_MS = 2000L
 
-/**
- * 日志标签，和播放侧保持一致，方便一起过滤。
- */
-private const val LOG_TAG = "MuseMusic"
 
 /**
  * 导航过渡时长。
@@ -1117,16 +982,3 @@ private const val LOG_TAG = "MuseMusic"
  * 第十批改回有存在感的 300ms —— 误触改由过渡遮罩解决，不再靠牺牲动画。
  */
 private const val NAV_ANIMATION_MS = 300
-
-/**
- * 预测式返回的动效参数。
- *
- * 数值是照 Google 的实现量的：手势拉到底时，窗口**等比缩到约 0.90**，
- * 四周均匀露出底下的目的地；横向只让开一点点用来表示方向。
- *
- * 一开始我把横向位移写成 0.25（270px），太大了 —— Google 那边只有 ~30px。
- * 真正负责表示方向的其实是跟着手指的箭头指示器（[BackGestureIndicator]），
- * 位移只需要一点点来配合。
- */
-private const val PREDICTIVE_EXIT_TRANSLATION = 0.06f
-private const val PREDICTIVE_EXIT_SCALE = 0.10f

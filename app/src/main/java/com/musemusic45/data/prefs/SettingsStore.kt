@@ -178,20 +178,6 @@ class SettingsStore(private val context: Context) {
         context.settingsDataStore.edit { it[KEY_STOP_ON_TASK_REMOVED] = enabled }
     }
 
-    /**
-     * 是否启用预测式返回（Android 13+ 的 Predictive Back）。
-     *
-     * **默认开启** —— 这是安卓原生的返回体验：手势拖动时页面跟手缩小，
-     * 松手才真正返回。个别设备上系统手势冲突时可以关掉。
-     */
-    val predictiveBack: Flow<Boolean> = context.settingsDataStore.data.map { prefs ->
-        prefs[KEY_PREDICTIVE_BACK] ?: true
-    }
-
-    suspend fun setPredictiveBack(enabled: Boolean) {
-        context.settingsDataStore.edit { it[KEY_PREDICTIVE_BACK] = enabled }
-    }
-
     // ------------------------------------------------------ 手动移除的歌曲
 
     /** 用户手动移除（隐藏）的歌曲 ID。只影响显示与播放队列，不动任何文件。 */
@@ -225,7 +211,6 @@ class SettingsStore(private val context: Context) {
         val KEY_EXTRA_SEPARATORS = stringPreferencesKey("artist_extra_separators")
 
         val KEY_STOP_ON_TASK_REMOVED = booleanPreferencesKey("stop_on_task_removed")
-        val KEY_PREDICTIVE_BACK = booleanPreferencesKey("predictive_back")
         val KEY_HIDDEN_SONGS = stringSetPreferencesKey("hidden_song_ids")
 
         fun sortFieldKey(target: SortTarget) = stringPreferencesKey("sort_field_${target.name}")
