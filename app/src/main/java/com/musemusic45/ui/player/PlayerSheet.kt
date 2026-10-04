@@ -22,7 +22,6 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.FilledIconButton
@@ -46,6 +45,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.musemusic45.data.media.LyricsState
+import com.musemusic45.data.model.PlayMode
 import com.musemusic45.data.model.Song
 import com.musemusic45.ui.components.CoverImage
 import com.musemusic45.ui.theme.LyricsPalette
@@ -72,7 +72,7 @@ fun PlayerSheet(
     isPlaying: Boolean,
     positionMs: Long,
     durationMs: Long,
-    modeLabel: String,
+    mode: PlayMode,
     onCollapse: () -> Unit,
     onTogglePlay: () -> Unit,
     onPrevious: () -> Unit,
@@ -136,7 +136,7 @@ fun PlayerSheet(
                 .padding(horizontal = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            PlayerTopBar(modeLabel = modeLabel, onCollapse = onCollapse)
+            PlayerTopBar(modeLabel = mode.playerTitle, onCollapse = onCollapse)
 
             if (showLyrics) {
                 LyricsPane(
@@ -192,6 +192,7 @@ fun PlayerSheet(
                 positionLabel = formatDuration(shownPositionMs),
                 durationLabel = formatDuration(safeDuration),
                 isPlaying = isPlaying,
+                mode = mode,
                 onModeClick = onModeClick,
                 onPrevious = onPrevious,
                 onTogglePlay = onTogglePlay,
@@ -317,6 +318,7 @@ private fun PlayerControlsCard(
     positionLabel: String,
     durationLabel: String,
     isPlaying: Boolean,
+    mode: PlayMode,
     onModeClick: () -> Unit,
     onPrevious: () -> Unit,
     onTogglePlay: () -> Unit,
@@ -354,7 +356,9 @@ private fun PlayerControlsCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 FilledTonalIconButton(onClick = onModeClick) {
-                    Icon(Icons.Filled.Repeat, contentDescription = "播放方式")
+                    // 图标跟随当前播放方式 —— 写死成 Repeat 的话，
+                    // 切到单曲循环在播放页上看不出任何变化
+                    Icon(mode.icon(), contentDescription = "播放方式: ${mode.label}")
                 }
                 FilledTonalIconButton(
                     onClick = onPrevious,

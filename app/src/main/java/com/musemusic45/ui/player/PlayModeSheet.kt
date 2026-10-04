@@ -105,9 +105,4 @@ fun PlayModeSheet(
     }
 }
 
-private fun iconFor(mode: PlayMode): ImageVector = when (mode) {
-    PlayMode.LIST_LOOP -> Icons.Filled.Repeat
-    PlayMode.SINGLE_LOOP -> Icons.Filled.RepeatOne
-    PlayMode.SHUFFLE -> Icons.Filled.Shuffle
-    PlayMode.ALBUM_SHUFFLE -> Icons.Filled.Album
-}
+private fun iconFor(mode: PlayMode): ImageVector = mode.icon()

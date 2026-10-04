@@ -77,9 +77,12 @@ class PlaybackController(private val context: Context) {
         val connected = future.awaitController()
         connected.addListener(listener)
         controller = connected
+        // 把「还没连上时就记下来的播放方式」应用到播放器。
+        // 少了这一步，启动时恢复存档模式就只是记了个变量、播放器压根不知道。
+        applyModeToPlayer()
         syncFromPlayer()
         startTicker()
-        Log.i(TAG, "已连接播放服务")
+        Log.i(TAG, "已连接播放服务, 播放方式=$currentMode")
     }
 
     fun release() {
@@ -236,9 +239,24 @@ class PlaybackController(private val context: Context) {
      * 会变成"单张专辑无限循环"。
      */
     fun setMode(mode: PlayMode) {
-        if (mode == currentMode) return
-        val player = controller ?: return
+        when (ModeSwitch.applyTiming(mode, currentMode, playerReady = controller != null)) {
+            // 模式没变化
+            null -> return
 
+            // 播放器还没连上：**先把选择记下来**，连上时再应用。
+            // 不记的话，启动时"恢复存档的播放方式"会被静默丢掉 ——
+            // connect() 是挂起的、setMode() 不是，两个一起 launch 时
+            // setMode 会先跑完，那会儿 controller 还是 null。
+            ModeSwitch.Timing.DEFER -> {
+                currentMode = mode
+                Log.i(TAG, "播放方式记为 $mode（服务尚未连接，连上后应用）")
+                return
+            }
+
+            ModeSwitch.Timing.NOW -> Unit
+        }
+
+        val player = controller ?: return
         val previousMode = currentMode
         val current = _state.value.currentSong
         val position = ModeSwitch.resumePosition(player.currentPosition)

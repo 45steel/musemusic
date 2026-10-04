@@ -38,11 +38,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     val lyrics: StateFlow<LyricsState> = _lyrics.asStateFlow()
 
     init {
+        // 连接与恢复播放方式**必须在同一个协程里串行**。
+        // 分两个 launch 同时跑的话，setMode 会先于连接完成执行；
+        // 虽然 PlaybackController 现在会把选择记下来（见 ModeSwitch.applyTiming），
+        // 但串行更直观，也少一层"靠下游兜底"的隐式依赖。
         viewModelScope.launch {
             runCatching { playback.connect() }
-        }
-        // 恢复上次的播放方式
-        viewModelScope.launch {
             val stored = settings.playMode.first()
             if (stored != null) playback.setMode(stored)
         }

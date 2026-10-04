@@ -668,7 +668,7 @@ fun AppRoot(
                 isPlaying = playback.isPlaying,
                 positionMs = playback.positionMs,
                 durationMs = playback.durationMs,
-                modeLabel = playback.mode.playerTitle,
+                mode = playback.mode,
                 onCollapse = { playerExpanded = false },
                 onTogglePlay = { playerViewModel.togglePlayPause() },
                 onPrevious = { playerViewModel.previous() },

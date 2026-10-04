@@ -51,6 +51,48 @@ class ModeSwitchTest {
         assertFalse(ModeSwitch.needsFullQueueRestore(PlayMode.ALBUM_SHUFFLE, PlayMode.ALBUM_SHUFFLE))
     }
 
+    // ------------------------------------------------ 切换时机（第十批补的坑）
+
+    @Test
+    fun `模式没变化时什么都不用做`() {
+        assertEquals(null, ModeSwitch.applyTiming(PlayMode.LIST_LOOP, PlayMode.LIST_LOOP, playerReady = true))
+        assertEquals(null, ModeSwitch.applyTiming(PlayMode.SINGLE_LOOP, PlayMode.SINGLE_LOOP, playerReady = false))
+    }
+
+    @Test
+    fun `播放器就绪时立即应用`() {
+        assertEquals(
+            ModeSwitch.Timing.NOW,
+            ModeSwitch.applyTiming(PlayMode.SINGLE_LOOP, PlayMode.LIST_LOOP, playerReady = true),
+        )
+    }
+
+    /**
+     * 这是第十批那个真实缺陷：启动时 `connect()` 还在挂起，
+     * `setMode(存档模式)` 已经跑完了，那会儿 controller 是 null。
+     * 如果这时直接返回而不记录，存档的播放方式就被静默丢掉 ——
+     * 表现是"设了单曲循环，重启后变回列表循环"。
+     */
+    @Test
+    fun `播放器还没连上时必须先记下来而不是丢掉`() {
+        assertEquals(
+            ModeSwitch.Timing.DEFER,
+            ModeSwitch.applyTiming(PlayMode.SINGLE_LOOP, PlayMode.LIST_LOOP, playerReady = false),
+        )
+    }
+
+    @Test
+    fun `四种模式在未连接时都会被推迟而不是丢弃`() {
+        for (mode in PlayMode.entries) {
+            if (mode == PlayMode.LIST_LOOP) continue
+            assertEquals(
+                "启动时恢复 $mode 会被丢掉",
+                ModeSwitch.Timing.DEFER,
+                ModeSwitch.applyTiming(mode, PlayMode.LIST_LOOP, playerReady = false),
+            )
+        }
+    }
+
     // ------------------------------------------------------ 播放位置保留
 
     @Test
