@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -167,9 +166,13 @@ private fun LyricLineView(
 
     Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 12.dp),
+            // 顺序**不能改**：
+            //   padding 在前 = 行间距不属于热区（点行间空隙应当落到外层"返回封面"）
+            //   clickable 在后 = 热区严格等于文字本身的布局范围
+            // 原来写成 .fillMaxWidth().clickable().padding()，热区变成整屏宽 x 112px，
+            // 而一行纯原文只有 ~559x35 —— 空白点击大量命中歌词，返回封面变得很难点。
+            .padding(horizontal = 20.dp, vertical = 12.dp)
+            .clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         if (isCurrent && line.hasWords) {
