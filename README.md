@@ -97,9 +97,9 @@
 
 ## 📦 版本信息
 
-- 当前版本：**v1.0.0**
-- `versionCode`：2
-- `versionName`：1.0.0
+- 当前版本：**v1.0.1**
+- `versionCode`：3
+- `versionName`：1.0.1
 
 > `versionCode` 每次发版递增（整数），`versionName` 是对外展示的文本。
 
